@@ -295,10 +295,34 @@ io.on("connection", (socket) => {
 
           resolveOpenTrades(signalPayload);
 
-          const signalKey = `${payload.market}:${payload.symbol}:${payload.timeframe}:${setup.appliedMode}:${setup.direction}:${setup.entry}`;
-          if (setup.signalQuality === "PERFECT" && setup.direction !== "NEUTRAL" && !executedSignalKeys.has(signalKey)) {
-            const execution = await executeSignalOrder(signalPayload);
+         const signalKey = `${payload.market}:${payload.symbol}:${payload.timeframe}:${setup.appliedMode}:${setup.direction}:${setup.entry}`;
+
+console.log("==================================");
+console.log("Signal Quality:", setup.signalQuality);
+console.log("Direction:", setup.direction);
+console.log("Confidence:", setup.confidence);
+console.log("RR:", setup.rr);
+console.log("Already Executed:", executedSignalKeys.has(signalKey));
+console.log("==================================");
+
+if (setup.signalQuality === "PERFECT" && setup.direction !== "NEUTRAL" && !executedSignalKeys.has(signalKey)) {
+    console.log("AUTO EXECUTION STARTED");
+
+    const execution = await executeSignalOrder(signalPayload);
+
+    if (execution.executed) {
+        executedSignalKeys.add(signalKey);
+        recordSignalTrade(signalPayload, "auto-execution");
+        socket.emit("execution:update", execution);
+    } else {
+        socket.emit("execution:update", execution);
+        recordSignalTrade(signalPayload, "signal");
+    }
+} else {
+    recordSignalTrade(signalPayload, "signal");
+}
             if (execution.executed) {
+              console.log("AUTO EXECUTION STARTED");
               executedSignalKeys.add(signalKey);
               recordSignalTrade(signalPayload, "auto-execution");
               socket.emit("execution:update", execution);
