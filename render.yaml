@@ -11,9 +11,9 @@ services:
       - key: NODE_VERSION
         value: 20
       - key: ENABLE_AUTO_EXECUTION
-        value: "false"
+        value: "true"
       - key: BROKER
-        value: "paper"
+        value: "mt5"
       - key: MT5_SHARED_SECRET
         sync: false
       - key: MT5_SYMBOL_PREFIX
