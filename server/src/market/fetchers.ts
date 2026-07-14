@@ -9,6 +9,20 @@ const numeric = (v: unknown): number => Number(v ?? 0);
 
 const normalizeCandles = (candles: Candle[], limit: number): Candle[] => candles.slice(-limit);
 
+type CachedYahooEntry = {
+  expiresAt: number;
+  candles: Candle[];
+};
+
+const yahooCache = new Map<string, CachedYahooEntry>();
+const yahooInFlight = new Map<string, Promise<Candle[]>>();
+const YAHOO_CACHE_TTL_MS = 45_000;
+
+const yahooCacheKey = (instrument: Instrument, timeframe: Timeframe, limit: number): string => {
+  const tf = timeframeToYahoo(timeframe);
+  return `${instrument.providerSymbol}:${tf.interval}:${tf.range}:${limit}`;
+};
+
 export async function fetchBinanceCandles(
   instrument: Instrument,
   timeframe: Timeframe,
@@ -37,64 +51,96 @@ export async function fetchYahooCandles(
   timeframe: Timeframe,
   limit: number
 ): Promise<Candle[]> {
+  const cacheKey = yahooCacheKey(instrument, timeframe, limit);
+  const cached = yahooCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.candles;
+  }
+
+  const existing = yahooInFlight.get(cacheKey);
+  if (existing) {
+    return existing;
+  }
+
   const tf = timeframeToYahoo(timeframe);
   const endpoint = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(instrument.providerSymbol)}?interval=${tf.interval}&range=${tf.range}`;
-  const response = await fetch(endpoint, {
-    headers: {
-      "User-Agent": "fx-bot/1.0"
-    }
-  });
+  const request = (async () => {
+    try {
+      const response = await fetch(endpoint, {
+        headers: {
+          "User-Agent": "fx-bot/1.0"
+        }
+      });
 
-  if (!response.ok) {
-    throw new Error(`Yahoo data error: ${response.status}`);
-  }
+      if (!response.ok) {
+        if (response.status === 429 && cached) {
+          console.warn(`Yahoo rate limited for ${cacheKey}; serving cached candles.`);
+          return cached.candles;
+        }
+        throw new Error(`Yahoo data error: ${response.status}`);
+      }
 
-  const payload = (await response.json()) as {
-    chart: {
-      result?: Array<{
-        timestamp: number[];
-        indicators: {
-          quote: Array<{
-            open: Array<number | null>;
-            high: Array<number | null>;
-            low: Array<number | null>;
-            close: Array<number | null>;
-            volume?: Array<number | null>;
+      const payload = (await response.json()) as {
+        chart: {
+          result?: Array<{
+            timestamp: number[];
+            indicators: {
+              quote: Array<{
+                open: Array<number | null>;
+                high: Array<number | null>;
+                low: Array<number | null>;
+                close: Array<number | null>;
+                volume?: Array<number | null>;
+              }>;
+            };
           }>;
         };
-      }>;
-    };
-  };
+      };
 
-  const result = payload.chart.result?.[0];
-  if (!result) {
-    return [];
-  }
+      const result = payload.chart.result?.[0];
+      if (!result) {
+        if (cached) {
+          return cached.candles;
+        }
+        return [];
+      }
 
-  const quote = result.indicators.quote[0];
-  const candles: Candle[] = [];
+      const quote = result.indicators.quote[0];
+      const candles: Candle[] = [];
 
-  for (let i = 0; i < result.timestamp.length; i += 1) {
-    const open = quote.open[i];
-    const high = quote.high[i];
-    const low = quote.low[i];
-    const close = quote.close[i];
+      for (let i = 0; i < result.timestamp.length; i += 1) {
+        const open = quote.open[i];
+        const high = quote.high[i];
+        const low = quote.low[i];
+        const close = quote.close[i];
 
-    if (open == null || high == null || low == null || close == null) {
-      continue;
+        if (open == null || high == null || low == null || close == null) {
+          continue;
+        }
+
+        candles.push({
+          time: toIso(result.timestamp[i]),
+          open,
+          high,
+          low,
+          close,
+          volume: quote.volume?.[i] ?? undefined
+        });
+      }
+
+      const normalized = normalizeCandles(candles, limit);
+      yahooCache.set(cacheKey, {
+        candles: normalized,
+        expiresAt: Date.now() + YAHOO_CACHE_TTL_MS
+      });
+      return normalized;
+    } finally {
+      yahooInFlight.delete(cacheKey);
     }
+  })();
 
-    candles.push({
-      time: toIso(result.timestamp[i]),
-      open,
-      high,
-      low,
-      close,
-      volume: quote.volume?.[i] ?? undefined
-    });
-  }
-
-  return normalizeCandles(candles, limit);
+  yahooInFlight.set(cacheKey, request);
+  return request;
 }
 
 export async function fetchDerivCandles(
