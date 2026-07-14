@@ -29,10 +29,8 @@ services:
   - type: web
     name: fx-bot-web
     runtime: static
-    plan: free
-    rootDir: client
-    buildCommand: npm ci && npm run build
-    staticPublishPath: dist
+    buildCommand: npm ci --prefix client && npm run build --prefix client
+    staticPublishPath: client/dist
     envVars:
       - key: VITE_API_URL
         value: https://fx-bot-4q8t.onrender.com
