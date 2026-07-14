@@ -305,7 +305,11 @@ io.on("connection", (socket) => {
 
           socket.emit("market:update", signalPayload);
         } catch (error) {
-          socket.emit("market:error", { error: (error as Error).message });
+          const message = (error as Error).message;
+          if (message.includes("Yahoo data error: 429")) {
+            return;
+          }
+          socket.emit("market:error", { error: message });
         }
       };
 
@@ -377,10 +381,14 @@ io.on("connection", (socket) => {
               socket.emit("watch:perfect-entry", signalPayload);
             }
           } catch (error) {
+            const message = (error as Error).message;
+            if (message.includes("Yahoo data error: 429")) {
+              continue;
+            }
             socket.emit("watch:error", {
               market: item.market,
               symbol: item.symbol,
-              error: (error as Error).message
+              error: message
             });
           }
         }

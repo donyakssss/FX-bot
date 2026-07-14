@@ -202,7 +202,13 @@ export default function App() {
       setAutoAnalyze(true);
       emitWatchlist();
     } catch (err) {
-      setError((err as Error).message);
+      const message = (err as Error).message;
+      if (message.includes("Yahoo data error: 429")) {
+        setAutoAnalyze(true);
+        emitWatchlist();
+        return;
+      }
+      setError(message);
     }
   }
 
