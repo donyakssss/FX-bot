@@ -93,7 +93,12 @@ app.get("/api/mt5/orders/pending", (req, res) => {
   if (!isMt5Authorized(req)) {
     return res.status(401).json({ error: "Unauthorized MT5 bridge request." });
   }
-  return res.json({ orders: listPendingMt5Orders() });
+
+  const orders = listPendingMt5Orders();
+
+  console.log("Pending orders:", JSON.stringify(orders, null, 2));
+
+  return res.json({ orders });
 });
 
 app.get("/api/mt5/orders/all", (req, res) => {
