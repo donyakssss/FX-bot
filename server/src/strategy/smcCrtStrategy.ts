@@ -155,15 +155,30 @@ export const analyzeSetup = (request: AnalyzeRequest): TradeSetup => {
   const confidence = Math.min(0.92, confidenceBase + confidenceBoost);
   const rr = round(rrRaw, 2);
 
-  const signalQuality: SignalQuality =
-    direction !== "NEUTRAL" && confidence >= 0.8 && rr >= (appliedMode === "scalp" ? 1.4 : 2.2) && futureEntries.length >= 3
-      ? "PERFECT"
-      : direction !== "NEUTRAL" && confidence >= 0.72 && rr >= 1.8
-        ? "HIGH"
-        : direction !== "NEUTRAL" && confidence >= 0.62
-          ? "MEDIUM"
-          : "LOW";
+ const minQuality = process.env.AUTO_EXECUTION_MIN_QUALITY ?? "PERFECT";
 
+const allowed =
+(
+    minQuality === "LOW" ||
+    (minQuality === "MEDIUM" &&
+        ["MEDIUM","HIGH","PERFECT"].includes(setup.signalQuality)) ||
+    (minQuality === "HIGH" &&
+        ["HIGH","PERFECT"].includes(setup.signalQuality)) ||
+    (minQuality === "PERFECT" &&
+        setup.signalQuality === "PERFECT")
+);
+
+if (
+    allowed &&
+    setup.direction !== "NEUTRAL" &&
+    !executedSignalKeys.has(signalKey)
+)
+console.log({
+    confidence,
+    rr,
+    futureEntries: futureEntries.length,
+    signalQuality
+});
   return {
     appliedMode,
     direction,
