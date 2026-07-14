@@ -3,9 +3,9 @@ services:
     name: fx-bot-api
     runtime: node
     plan: free
-    rootDir: .
-    buildCommand: npm install --prefix server && npm run build --prefix server
-    startCommand: npm run start --prefix server
+    rootDir: server
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
     healthCheckPath: /api/health
     envVars:
       - key: NODE_VERSION
