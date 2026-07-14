@@ -26,3 +26,13 @@ services:
         sync: false
       - key: BINANCE_API_SECRET
         sync: false
+  - type: web
+    name: fx-bot-web
+    runtime: static
+    plan: free
+    rootDir: client
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: VITE_API_URL
+        value: https://fx-bot-4q8t.onrender.com

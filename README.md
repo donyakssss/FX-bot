@@ -53,6 +53,11 @@ No strategy can guarantee 98% or 100% accuracy in live markets. This system is p
 4. Set secret values (especially `MT5_SHARED_SECRET`) in Render dashboard.
 5. Deploy and verify the same health endpoints above.
 
+### Option 3: Render (Web page)
+1. The same blueprint also creates the frontend static site `fx-bot-web`.
+2. After deploy, open the web service URL Render gives you for `fx-bot-web`.
+3. That is the browser page for charts, signals, and controls.
+
 ### Frontend to cloud API
 If frontend is local, create `client/.env` from `client/.env.example` and set:
 - `VITE_API_URL=https://your-api-url`
