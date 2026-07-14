@@ -1,0 +1,19 @@
+[
+  {
+    "id": "47c5e35f-ba96-40c3-a4a4-3cdbc381cb81",
+    "market": "forex",
+    "symbol": "EURUSD",
+    "timeframe": "H4",
+    "tradeMode": "swing",
+    "direction": "BUY",
+    "signalQuality": "MEDIUM",
+    "entry": 1.14325,
+    "stopLoss": 1.13817,
+    "takeProfit": 1.15951,
+    "riskAmount": 50,
+    "lotSize": 0.1,
+    "openedAt": "2026-07-14T14:21:33.972Z",
+    "status": "OPEN",
+    "source": "signal"
+  }
+]

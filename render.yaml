@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: fx-bot-api
+    runtime: node
+    plan: free
+    rootDir: .
+    buildCommand: npm install --prefix server && npm run build --prefix server
+    startCommand: npm run start --prefix server
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: 20
+      - key: ENABLE_AUTO_EXECUTION
+        value: "false"
+      - key: BROKER
+        value: "paper"
+      - key: MT5_SHARED_SECRET
+        sync: false
+      - key: MT5_SYMBOL_PREFIX
+        value: ""
+      - key: MT5_SYMBOL_SUFFIX
+        value: ""
+      - key: MT5_SYMBOL_MAP_JSON
+        value: "{}"
+      - key: BINANCE_API_KEY
+        sync: false
+      - key: BINANCE_API_SECRET
+        sync: false
