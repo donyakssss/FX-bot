@@ -14,6 +14,8 @@ import { ackMt5Order, listAllMt5Orders, listPendingMt5Orders } from "./execution
 
 const app = express();
 const port = process.env.PORT ?? 4000;
+const marketPollIntervalMs = Number(process.env.MARKET_POLL_INTERVAL_MS ?? 15000);
+const watchlistPollIntervalMs = Number(process.env.WATCHLIST_POLL_INTERVAL_MS ?? 30000);
 const executedSignalKeys = new Set<string>();
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
@@ -308,7 +310,7 @@ io.on("connection", (socket) => {
       };
 
       await tick();
-      marketTimer = setInterval(tick, 5000);
+      marketTimer = setInterval(tick, marketPollIntervalMs);
     }
   );
 
@@ -387,7 +389,7 @@ io.on("connection", (socket) => {
       void tickWatchlist();
       watchlistTimer = setInterval(() => {
         void tickWatchlist();
-      }, 10000);
+      }, watchlistPollIntervalMs);
     }
   );
 

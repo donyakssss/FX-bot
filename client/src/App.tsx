@@ -105,6 +105,9 @@ export default function App() {
       setError(null);
     });
     socket.on("market:error", (payload: { error: string }) => {
+      if (payload.error.includes("Yahoo data error: 429")) {
+        return;
+      }
       setError(payload.error);
     });
     socket.on("watch:update", (payload: LiveUpdate) => {
