@@ -25,6 +25,12 @@ const io = new Server(httpServer, {
 app.use(cors());
 app.use(express.json({ limit: "1mb" }));
 
+app.get("/", (_req, res) => {
+  res.status(200).send(
+    "FX bot API is running. Check /api/health, /api/automation/status, or /api/instruments."
+  );
+});
+
 app.get("/api/health", (_req, res) => {
   res.json({ ok: true, service: "fx-bot-server" });
 });
