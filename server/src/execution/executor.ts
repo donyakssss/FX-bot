@@ -132,6 +132,8 @@ const executeMt5 = async (payload: SignalPayload): Promise<ExecutionResult> => {
   const trailing = trailingByMode(payload.setup.appliedMode);
   const hash = signalHash(payload, primaryLimit.orderType, primaryLimit.entry);
 
+  const orderId = crypto.randomUUID();
+  
 console.log("========== QUEUING MT5 ORDER ==========");
 console.log("Symbol:", payload.snapshot.symbol);
 console.log("Direction:", payload.setup.direction);
