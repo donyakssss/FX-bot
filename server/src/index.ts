@@ -321,18 +321,6 @@ if (setup.signalQuality === "PERFECT" && setup.direction !== "NEUTRAL" && !execu
 } else {
     recordSignalTrade(signalPayload, "signal");
 }
-            if (execution.executed) {
-              console.log("AUTO EXECUTION STARTED");
-              executedSignalKeys.add(signalKey);
-              recordSignalTrade(signalPayload, "auto-execution");
-              socket.emit("execution:update", execution);
-            } else {
-              socket.emit("execution:update", execution);
-              recordSignalTrade(signalPayload, "signal");
-            }
-          } else {
-            recordSignalTrade(signalPayload, "signal");
-          }
 
           socket.emit("market:update", signalPayload);
         } catch (error) {
