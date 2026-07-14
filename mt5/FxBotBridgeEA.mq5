@@ -4,8 +4,8 @@
 
 #include <Trade/Trade.mqh>
 
-input string BridgeBaseUrl = "http://127.0.0.1:4000";
-input string SharedSecret = "change_me";
+input string BridgeBaseUrl = "https://fx-bot-4q8t.onrender.com";
+input string SharedSecret = "2aHV4uomWzl/F9F2KGygTIBXRqGGA/LVeE6NWmfsDOE=";
 input int PollIntervalSec = 5;
 input int RequestTimeoutMs = 5000;
 input bool RestrictToCurrentChartSymbol = false;

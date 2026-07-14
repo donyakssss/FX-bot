@@ -77,12 +77,14 @@ app.get("/api/mt5/trailing-rules", (req, res) => {
   });
 });
 
-const hasMt5Secret = (): boolean => Boolean(process.env.MT5_SHARED_SECRET);
-
 const isMt5Authorized = (req: express.Request): boolean => {
+  console.log("Received:", req.header("x-mt5-secret"));
+  console.log("Expected:", process.env.MT5_SHARED_SECRET);
+
   if (!hasMt5Secret()) {
     return true;
   }
+
   const provided = req.header("x-mt5-secret") ?? "";
   return provided === process.env.MT5_SHARED_SECRET;
 };
