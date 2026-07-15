@@ -210,7 +210,6 @@ bool ParseOrders(const string response, string &orderObjects[])
          level++;
       }
       else if(ch == '}')
-      Print("WebRequest GET failed. Error=", GetLastError(), " URL=", url);
       {
          level--;
          if(level == 0 && objStart >= 0)
