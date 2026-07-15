@@ -154,7 +154,12 @@ const order: Mt5QueuedOrder = {
 console.log("========== QUEUING MT5 ORDER ==========");
 console.log(JSON.stringify(order, null, 2));
 
+console.log("Writing order to mt5-orders.json...");
+
 const queued = enqueueMt5Order(order);
+
+console.log("Queued:", queued);
+console.log("Queue write finished.");
 
 console.log("Queued:", queued);
 console.log("======================================");

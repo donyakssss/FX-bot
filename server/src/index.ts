@@ -90,12 +90,22 @@ const isMt5Authorized = (req: express.Request): boolean => {
 };
 
 app.get("/api/mt5/orders/pending", (req, res) => {
-  console.log("==== MT5 REQUEST RECEIVED ====");
-  console.log(req.headers);
+    console.log("===== PENDING REQUEST =====");
 
-  return res.status(200).json({
-    orders: []
-  });
+    if (!isMt5Authorized(req)) {
+        console.log("Unauthorized request");
+        return res.status(401).json({
+            error: "Unauthorized"
+        });
+    }
+
+    const orders = listPendingMt5Orders();
+
+    console.log("Orders:", JSON.stringify(orders, null, 2));
+
+    return res.json({
+        orders
+    });
 });
 
 app.post("/api/mt5/orders/ack", (req, res) => {
@@ -294,7 +304,8 @@ console.log("Signal Quality:", setup.signalQuality);
 console.log("Direction:", setup.direction);
 console.log("Future Entries:", setup.futureEntries.length);
 
-if (setup.signalQuality === "PERFECT" && setup.direction !== "NEUTRAL" && !executedSignalKeys.has(signalKey)) {
+if (setup.direction !== "NEUTRAL" &&
+    !executedSignalKeys.has(signalKey)) {
     console.log("AUTO EXECUTION STARTED");
 
     const execution = await executeSignalOrder(signalPayload);
