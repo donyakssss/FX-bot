@@ -1,7 +1,7 @@
 import ccxt from "ccxt";
 import crypto from "node:crypto";
 import type { SignalPayload } from "../types/journal.js";
-import { enqueueMt5Order } from "./mt5Bridge.js";
+import { enqueueMt5Order, type Mt5QueuedOrder } from "./mt5Bridge.js";
 
 type BrokerType = "paper" | "binance" | "mt5";
 
@@ -132,33 +132,32 @@ const executeMt5 = async (payload: SignalPayload): Promise<ExecutionResult> => {
   const trailing = trailingByMode(payload.setup.appliedMode);
   const hash = signalHash(payload, primaryLimit.orderType, primaryLimit.entry);
 
-  const orderId = crypto.randomUUID();
-  
-console.log("========== QUEUING MT5 ORDER ==========");
-console.log("Symbol:", payload.snapshot.symbol);
-console.log("Direction:", payload.setup.direction);
-console.log("Entry:", primaryLimit.entry);
+ const orderId = crypto.randomUUID();
 
-const queued = enqueueMt5Order({
-    id: orderId,
-    signalHash: hash,
-    symbol: payload.snapshot.symbol,
-    brokerSymbol,
-    tradeMode: payload.setup.appliedMode,
-    direction: payload.setup.direction === "BUY" ? "BUY" : "SELL",
-    orderType: primaryLimit.orderType,
-    entry: primaryLimit.entry,
-    stopLoss: primaryLimit.stopLoss,
-    takeProfit: primaryLimit.takeProfit,
-    lotSize: Math.max(0.01, Number(payload.risk.lotSize.toFixed(2))),
-    trailing,
-    createdAt: new Date().toISOString(),
-    status: "PENDING"
-});
+const order: Mt5QueuedOrder = {
+  id: orderId,
+  signalHash: hash,
+  symbol: payload.snapshot.symbol,
+  brokerSymbol,
+  tradeMode: payload.setup.appliedMode,
+  direction: (payload.setup.direction === "BUY" ? "BUY" : "SELL") as "BUY" | "SELL",
+  orderType: primaryLimit.orderType,
+  entry: primaryLimit.entry,
+  stopLoss: primaryLimit.stopLoss,
+  takeProfit: primaryLimit.takeProfit,
+  lotSize: Math.max(0.01, Number(payload.risk.lotSize.toFixed(2))),
+  trailing,
+  createdAt: new Date().toISOString(),
+  status: "PENDING"
+};
+
+console.log("========== QUEUING MT5 ORDER ==========");
+console.log(JSON.stringify(order, null, 2));
+
+const queued = enqueueMt5Order(order);
 
 console.log("Queued:", queued);
 console.log("======================================");
-
   return {
     executed: queued.id === orderId,
     broker: "mt5",
@@ -173,6 +172,8 @@ export const executeSignalOrder = async (payload: SignalPayload): Promise<Execut
     console.log("ENTERED executeSignalOrder");
     console.log("Broker =", broker);
     console.log("Auto =", autoEnabled);
+    console.log("Auto Enabled:", autoEnabled);
+console.log("Broker:", broker);
 
     if (!autoEnabled) {
         console.log("AUTO DISABLED");

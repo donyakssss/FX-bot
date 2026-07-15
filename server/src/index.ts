@@ -90,22 +90,12 @@ const isMt5Authorized = (req: express.Request): boolean => {
 };
 
 app.get("/api/mt5/orders/pending", (req, res) => {
-  if (!isMt5Authorized(req)) {
-    return res.status(401).json({ error: "Unauthorized MT5 bridge request." });
-  }
+  console.log("==== MT5 REQUEST RECEIVED ====");
+  console.log(req.headers);
 
-  const orders = listPendingMt5Orders();
-
-  console.log("Pending orders:", JSON.stringify(orders, null, 2));
-
-  return res.json({ orders });
-});
-
-app.get("/api/mt5/orders/all", (req, res) => {
-  if (!isMt5Authorized(req)) {
-    return res.status(401).json({ error: "Unauthorized MT5 bridge request." });
-  }
-  return res.json({ orders: listAllMt5Orders() });
+  return res.status(200).json({
+    orders: []
+  });
 });
 
 app.post("/api/mt5/orders/ack", (req, res) => {
@@ -300,6 +290,9 @@ io.on("connection", (socket) => {
 console.log("==================================");
 console.log("Already Executed:", executedSignalKeys.has(signalKey));
 console.log("==================================");
+console.log("Signal Quality:", setup.signalQuality);
+console.log("Direction:", setup.direction);
+console.log("Future Entries:", setup.futureEntries.length);
 
 if (setup.signalQuality === "PERFECT" && setup.direction !== "NEUTRAL" && !executedSignalKeys.has(signalKey)) {
     console.log("AUTO EXECUTION STARTED");

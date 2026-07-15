@@ -129,6 +129,7 @@ void ApplyTrailingForAllPositions()
 string BuildHeaders()
 {
    string headers = "Content-Type: application/json\r\n";
+   headers += "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36\r\n";
    if(StringLen(SharedSecret) > 0)
       headers += "x-mt5-secret: " + SharedSecret + "\r\n";
    return headers;
@@ -267,11 +268,15 @@ bool HttpPost(const string url, const string body, string &response)
    }
 
    response = CharArrayToString(result, 0, ArraySize(result));
-   if(code < 200 || code >= 300)
-   {
-      Print("WebRequest POST non-2xx. Code=", code, " Body=", response);
-      return false;
-   }
+  Print("HTTP Status = ", code);
+Print("Headers = ", resultHeaders);
+Print("Body = ", response);
+
+if(code < 200 || code >= 300)
+{
+   Print("GET FAILED");
+   return false;
+}
 
    return true;
 }
