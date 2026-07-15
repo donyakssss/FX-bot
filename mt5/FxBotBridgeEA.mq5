@@ -4,7 +4,7 @@
 
 #include <Trade/Trade.mqh>
 
-input string BridgeBaseUrl = "https://fx-bot-4q8t.onrender.com";
+input string BridgeBaseUrl = "https://fx-bot-api.onrender.com";
 input string SharedSecret = "2aHV4uomWzl/F9F2KGygTIBXRqGGA/LVeE6NWmfsDOE=";
 input int PollIntervalSec = 5;
 input int RequestTimeoutMs = 5000;
@@ -210,6 +210,7 @@ bool ParseOrders(const string response, string &orderObjects[])
          level++;
       }
       else if(ch == '}')
+      Print("WebRequest GET failed. Error=", GetLastError(), " URL=", url);
       {
          level--;
          if(level == 0 && objStart >= 0)
