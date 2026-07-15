@@ -170,21 +170,31 @@ console.log("======================================");
 };
 
 export const executeSignalOrder = async (payload: SignalPayload): Promise<ExecutionResult> => {
-  if (!autoEnabled) {
-    return {
-      executed: false,
-      broker,
-      message: "Auto execution is disabled. Set ENABLE_AUTO_EXECUTION=true to enable."
-    };
-  }
+    console.log("ENTERED executeSignalOrder");
+    console.log("Broker =", broker);
+    console.log("Auto =", autoEnabled);
 
-  if (broker === "binance") {
-    return executeBinance(payload);
-  }
+    if (!autoEnabled) {
+        console.log("AUTO DISABLED");
+        return {
+            executed: false,
+            broker,
+            message: "Auto execution is disabled. Set ENABLE_AUTO_EXECUTION=true to enable."
+        };
+    }
 
-  if (broker === "mt5") {
-    return executeMt5(payload);
-  }
+    console.log("Passed auto check");
 
-  return executePaper(payload);
+    if (broker === "binance") {
+        console.log("Executing Binance");
+        return executeBinance(payload);
+    }
+
+    if (broker === "mt5") {
+        console.log("Executing MT5");
+        return executeMt5(payload);
+    }
+
+    console.log("Executing Paper");
+    return executePaper(payload);
 };

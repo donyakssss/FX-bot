@@ -298,10 +298,6 @@ io.on("connection", (socket) => {
          const signalKey = `${payload.market}:${payload.symbol}:${payload.timeframe}:${setup.appliedMode}:${setup.direction}:${setup.entry}`;
 
 console.log("==================================");
-console.log("Signal Quality:", signalQuality);
-console.log("Direction:", direction);
-console.log("Confidence:", confidence);
-console.log("RR:", rr);
 console.log("Already Executed:", executedSignalKeys.has(signalKey));
 console.log("==================================");
 
