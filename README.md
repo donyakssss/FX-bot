@@ -143,7 +143,7 @@ Body example:
    - If using MT5 bridge, set `MT5_SHARED_SECRET` and send same value in MT5 EA `x-mt5-secret` header
    - Optional MT5 symbol normalization:
      - `MT5_SYMBOL_PREFIX` (e.g. `m`)
-     - `MT5_SYMBOL_SUFFIX` (e.g. `.a`)
+       - `MT5_SYMBOL_SUFFIX` (e.g. `z` for Exness symbols like `XAUUSDz`, `BTCUSDz`)
      - `MT5_SYMBOL_MAP_JSON` (explicit overrides, example: `{"XAUUSD":"GOLD"}`)
 3. Restart backend server
 4. Verify with `GET /api/automation/status`

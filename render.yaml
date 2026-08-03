@@ -19,7 +19,7 @@ services:
       - key: MT5_SYMBOL_PREFIX
         value: ""
       - key: MT5_SYMBOL_SUFFIX
-        value: ""
+        value: "z"
       - key: MT5_SYMBOL_MAP_JSON
         value: "{}"
       - key: BINANCE_API_KEY
