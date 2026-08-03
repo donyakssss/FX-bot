@@ -1,3 +1,5 @@
+import { resolveApiBase } from "./base";
+
 export type Candle = {
   time: string;
   open: number;
@@ -42,7 +44,7 @@ export type AnalyzeResponse = {
   };
 };
 
-const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
+const API_BASE = resolveApiBase();
 
 export async function analyzeMarket(payload: AnalyzePayload): Promise<AnalyzeResponse> {
   const response = await fetch(`${API_BASE}/api/analyze`, {

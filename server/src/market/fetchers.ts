@@ -29,7 +29,7 @@ export async function fetchBinanceCandles(
   limit: number
 ): Promise<Candle[]> {
   const interval = timeframeToBinance(timeframe);
-  const endpoint = `https://api.binance.com/api/v3/klines?symbol=${instrument.providerSymbol}&interval=${interval}&limit=${Math.min(limit, 500)}`;
+  const endpoint = `https://data-api.binance.vision/api/v3/klines?symbol=${instrument.providerSymbol}&interval=${interval}&limit=${Math.min(limit, 500)}`;
   const response = await fetch(endpoint);
   if (!response.ok) {
     throw new Error(`Binance data error: ${response.status}`);

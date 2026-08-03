@@ -1,4 +1,6 @@
-const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
+import { resolveApiBase } from "./base";
+
+const API_BASE = resolveApiBase();
 
 export type JournalStats = {
   total: number;

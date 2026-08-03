@@ -24,6 +24,14 @@ const io = new Server(httpServer, {
   }
 });
 
+process.on("unhandledRejection", (reason) => {
+  console.error("Unhandled rejection:", reason);
+});
+
+process.on("uncaughtException", (error) => {
+  console.error("Uncaught exception:", error);
+});
+
 app.use(cors());
 app.use(express.json({ limit: "1mb" }));
 
@@ -78,15 +86,24 @@ app.get("/api/mt5/trailing-rules", (req, res) => {
 });
 
 const isMt5Authorized = (req: express.Request): boolean => {
-  console.log("Received:", req.header("x-mt5-secret"));
-  console.log("Expected:", process.env.MT5_SHARED_SECRET);
-
   if (!process.env.MT5_SHARED_SECRET) {
-  return true;
-}
+    return true;
+  }
 
   const provided = req.header("x-mt5-secret") ?? "";
   return provided === process.env.MT5_SHARED_SECRET;
+};
+
+const validateLiveInstrument = (
+  market: MarketType,
+  symbol: string
+): { ok: true } | { ok: false; error: string } => {
+  const instrument = findInstrument(market, symbol);
+  if (!instrument) {
+    return { ok: false, error: `Unsupported instrument ${market}:${symbol}` };
+  }
+
+  return { ok: true };
 };
 
 app.get("/api/mt5/orders/pending", (req, res) => {
@@ -256,8 +273,21 @@ io.on("connection", (socket) => {
         clearInterval(marketTimer);
       }
 
+      const instrumentCheck = validateLiveInstrument(payload.market, payload.symbol);
+      if (!instrumentCheck.ok) {
+        socket.emit("market:error", { error: instrumentCheck.error });
+        return;
+      }
+
       const tick = async () => {
         try {
+          if (!findInstrument(payload.market, payload.symbol)) {
+            socket.emit("market:error", {
+              error: `Unsupported instrument ${payload.market}:${payload.symbol}`
+            });
+            return;
+          }
+
           const candles = await getMarketCandles(payload.market, payload.symbol, payload.timeframe, 220);
           if (candles.length < 20) {
             return;
@@ -310,6 +340,12 @@ if (setup.direction !== "NEUTRAL" &&
 
     const execution = await executeSignalOrder(signalPayload);
 
+    console.log("========== EXECUTION RESULT ==========");
+console.log("Executed:", execution.executed);
+console.log("Broker:", execution.broker);
+console.log("Message:", execution.message);
+console.log("======================================");
+
     if (execution.executed) {
         executedSignalKeys.add(signalKey);
         recordSignalTrade(signalPayload, "auto-execution");
@@ -348,7 +384,19 @@ if (setup.direction !== "NEUTRAL" &&
         clearInterval(watchlistTimer);
       }
 
-      const selected = payload.items.slice(0, 3);
+      const selected = payload.items.slice(0, 3).filter((item) => {
+        const instrumentCheck = validateLiveInstrument(item.market, item.symbol);
+        if (!instrumentCheck.ok) {
+          socket.emit("watch:error", {
+            market: item.market,
+            symbol: item.symbol,
+            error: instrumentCheck.error
+          });
+          return false;
+        }
+
+        return true;
+      });
       if (selected.length === 0) {
         return;
       }
@@ -356,6 +404,15 @@ if (setup.direction !== "NEUTRAL" &&
       const tickWatchlist = async () => {
         for (const item of selected) {
           try {
+            if (!findInstrument(item.market, item.symbol)) {
+              socket.emit("watch:error", {
+                market: item.market,
+                symbol: item.symbol,
+                error: `Unsupported instrument ${item.market}:${item.symbol}`
+              });
+              continue;
+            }
+
             const candles = await getMarketCandles(item.market, item.symbol, item.timeframe, 220);
             if (candles.length < 20) {
               continue;

@@ -1,4 +1,5 @@
 import { io, type Socket } from "socket.io-client";
+import { resolveApiBase } from "./base";
 
 export type MarketType = "forex" | "crypto" | "indices" | "metals" | "synthetics";
 export type Timeframe = "M1" | "M5" | "M15" | "M30" | "H1" | "H4" | "D1";
@@ -57,7 +58,7 @@ export type LiveUpdate = {
   updatedAt: string;
 };
 
-const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
+const API_BASE = resolveApiBase();
 
 export async function getInstruments(): Promise<Instrument[]> {
   const response = await fetch(`${API_BASE}/api/instruments`);
@@ -94,5 +95,7 @@ export async function analyzeLive(payload: {
 }
 
 export function connectLiveSocket(): Socket {
-  return io(API_BASE);
+  return io(API_BASE, {
+    transports: ["websocket", "polling"]
+  });
 }

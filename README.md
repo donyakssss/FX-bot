@@ -161,7 +161,7 @@ Body example:
 ### MT5 template included
 - EA file: `mt5/FxBotBridgeEA.mq5`
 - Copy this file into your MT5 `MQL5/Experts` folder, compile in MetaEditor, then attach to a chart.
-- In MT5: `Tools -> Options -> Expert Advisors -> Allow WebRequest for listed URL`, add your bridge URL (for local: `http://127.0.0.1:4000`).
+- In MT5: `Tools -> Options -> Expert Advisors -> Allow WebRequest for listed URL`, add your bridge URL (for Render: `https://fx-bot-api.onrender.com`).
 - Set EA inputs:
    - `BridgeBaseUrl`
    - `SharedSecret` (must match `MT5_SHARED_SECRET`)

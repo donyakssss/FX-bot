@@ -268,13 +268,13 @@ bool HttpPost(const string url, const string body, string &response)
    }
 
    response = CharArrayToString(result, 0, ArraySize(result));
-  Print("HTTP Status = ", code);
-Print("Headers = ", resultHeaders);
-Print("Body = ", response);
+   Print("HTTP Status = ", code);
+   Print("Headers = ", resultHeaders);
+   Print("Body = ", response);
 
 if(code < 200 || code >= 300)
 {
-   Print("GET FAILED");
+   Print("POST FAILED");
    return false;
 }
 
