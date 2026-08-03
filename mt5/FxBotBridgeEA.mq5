@@ -367,6 +367,16 @@ string UrlEncode(const string value)
    return encoded;
 }
 
+string BuildMt5Url(const string path)
+{
+   string url = gBridgeBaseUrl + path;
+   if(StringLen(SharedSecret) > 0)
+   {
+      url += (StringFind(url, "?") >= 0 ? "&" : "?") + "mt5Secret=" + UrlEncode(SharedSecret);
+   }
+   return url;
+}
+
 string ExtractJsonValue(const string obj, const string key)
 {
    string token = "\"" + key + "\":";
@@ -591,8 +601,8 @@ if(code < 200 || code >= 300)
 
 void AckOrder(const string id, const string status, const string ticket, const string note)
 {
-   string url = gBridgeBaseUrl + "/api/mt5/orders/ack";
-   url += "?id=" + UrlEncode(id);
+   string url = BuildMt5Url("/api/mt5/orders/ack");
+   url += "&id=" + UrlEncode(id);
    url += "&status=" + UrlEncode(status);
    url += "&ticket=" + UrlEncode(ticket);
    url += "&note=" + UrlEncode(note);
@@ -744,7 +754,7 @@ bool PlacePendingOrder(const string obj)
 
 void PollBridge()
 {
-   string url = gBridgeBaseUrl + "/api/mt5/orders/pending";
+   string url = BuildMt5Url("/api/mt5/orders/pending");
    string response = "";
 
    if(!HttpGet(url, response))

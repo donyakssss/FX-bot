@@ -94,7 +94,7 @@ const isMt5Authorized = (req: express.Request): boolean => {
     return true;
   }
 
-  const provided = req.header("x-mt5-secret") ?? "";
+  const provided = req.header("x-mt5-secret") ?? String(req.query.mt5Secret ?? "");
   const configuredSecret = process.env.MT5_SHARED_SECRET?.trim();
 
   return [configuredSecret, LEGACY_MT5_SHARED_SECRET].some((secret) => secret && provided === secret);
