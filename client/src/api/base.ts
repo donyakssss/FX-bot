@@ -1,4 +1,5 @@
 const LOCAL_API_BASE = "http://localhost:4000";
+const DEFAULT_RENDER_API_BASE = "https://fx-bot-api.onrender.com";
 
 const stripTrailingSlash = (value: string): string => value.replace(/\/$/, "");
 
@@ -9,7 +10,7 @@ export const resolveApiBase = (): string => {
   }
 
   if (typeof window === "undefined") {
-    return LOCAL_API_BASE;
+    return DEFAULT_RENDER_API_BASE;
   }
 
   const { hostname, origin, port } = window.location;
@@ -17,5 +18,5 @@ export const resolveApiBase = (): string => {
     return LOCAL_API_BASE;
   }
 
-  return origin;
+  return DEFAULT_RENDER_API_BASE;
 };
