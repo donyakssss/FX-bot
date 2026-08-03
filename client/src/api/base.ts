@@ -1,5 +1,5 @@
 const LOCAL_API_BASE = "http://localhost:4000";
-const DEFAULT_RENDER_API_BASE = "http://147.15.143.184:4000";
+const DEFAULT_RENDER_API_BASE = "https://fxcrtsmcbot.com";
 
 const stripTrailingSlash = (value: string): string => value.replace(/\/$/, "");
 

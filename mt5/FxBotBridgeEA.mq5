@@ -4,7 +4,7 @@
 
 #include <Trade/Trade.mqh>
 
-input string BridgeBaseUrl = "http://147.15.143.184:4000";
+input string BridgeBaseUrl = "https://fxcrtsmcbot.com";
 input string SharedSecret = "2aHV4uomWzl/F9F2KGygTIBXRqGGA/LVeE6NWmfsDOE=";
 input int PollIntervalSec = 5;
 input int RequestTimeoutMs = 5000;

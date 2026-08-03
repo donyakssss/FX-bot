@@ -33,4 +33,4 @@ services:
     staticPublishPath: client/dist
     envVars:
       - key: VITE_API_URL
-        value: http://147.15.143.184:4000
+        value: https://fxcrtsmcbot.com
