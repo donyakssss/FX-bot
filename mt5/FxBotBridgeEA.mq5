@@ -209,6 +209,50 @@ bool IsLocalPositionLimitReached(const string symbol)
    return false;
 }
 
+bool CheckTradingAllowed(const string symbol, string &reason)
+{
+   reason = "";
+
+   if(!TerminalInfoInteger(TERMINAL_CONNECTED))
+   {
+      reason = "Terminal is offline";
+      return false;
+   }
+
+   if(!TerminalInfoInteger(TERMINAL_TRADE_ALLOWED))
+   {
+      reason = "Terminal AutoTrading is OFF";
+      return false;
+   }
+
+   if(!MQLInfoInteger(MQL_TRADE_ALLOWED))
+   {
+      reason = "EA setting 'Allow Algo Trading' is OFF";
+      return false;
+   }
+
+   if(!AccountInfoInteger(ACCOUNT_TRADE_ALLOWED))
+   {
+      reason = "Account trading is disabled (investor/read-only or broker-restricted)";
+      return false;
+   }
+
+   if(!AccountInfoInteger(ACCOUNT_TRADE_EXPERT))
+   {
+      reason = "Account blocks expert trading";
+      return false;
+   }
+
+   ENUM_SYMBOL_TRADE_MODE tradeMode = (ENUM_SYMBOL_TRADE_MODE)SymbolInfoInteger(symbol, SYMBOL_TRADE_MODE);
+   if(tradeMode == SYMBOL_TRADE_MODE_DISABLED)
+   {
+      reason = "Symbol trade mode is disabled by broker";
+      return false;
+   }
+
+   return true;
+}
+
 void ApplyTrailingForAllPositions()
 {
    for(int i = PositionsTotal() - 1; i >= 0; i--)
@@ -554,6 +598,13 @@ void EnsureStopsForOrder(
 
 bool ExecuteMarketFallback(const string brokerSymbol, const string orderType, const double lotSize, const double stopLoss, const double takeProfit, const string id)
 {
+   string tradeReason = "";
+   if(!CheckTradingAllowed(brokerSymbol, tradeReason))
+   {
+      Print("Market fallback blocked before send. Symbol=", brokerSymbol, " Reason=", tradeReason);
+      return false;
+   }
+
    if(IsLocalPositionLimitReached(brokerSymbol))
    {
       Print("Local position limit reached for ", brokerSymbol, ". Market fallback skipped.");
@@ -586,7 +637,7 @@ bool ExecuteMarketFallback(const string brokerSymbol, const string orderType, co
 
    if(!ok)
    {
-      Print("Market fallback failed. Retcode=", trade.ResultRetcode(), " Symbol=", brokerSymbol, " Type=", orderType);
+      Print("Market fallback failed. Retcode=", trade.ResultRetcode(), " Desc=", trade.ResultRetcodeDescription(), " Symbol=", brokerSymbol, " Type=", orderType);
       return false;
    }
 
@@ -713,6 +764,14 @@ bool PlacePendingOrder(const string obj)
       return false;
    }
 
+   string tradeReason = "";
+   if(!CheckTradingAllowed(brokerSymbol, tradeReason))
+   {
+      AckOrder(id, "REJECTED", "", tradeReason);
+      Print("Order blocked before send. Symbol=", brokerSymbol, " Reason=", tradeReason);
+      return false;
+   }
+
    double bid = SymbolInfoDouble(brokerSymbol, SYMBOL_BID);
    double ask = SymbolInfoDouble(brokerSymbol, SYMBOL_ASK);
    double point = SymbolInfoDouble(brokerSymbol, SYMBOL_POINT);
@@ -786,6 +845,18 @@ bool PlacePendingOrder(const string obj)
             AckOrder(id, "FILLED", IntegerToString((int)trade.ResultOrder()), "Market fallback after pending-order limit");
             return true;
          }
+      }
+
+      if(res.retcode == 10017)
+      {
+         string disabledReason = "";
+         if(CheckTradingAllowed(brokerSymbol, disabledReason))
+            disabledReason = "Broker returned trade disabled (symbol session/state restriction)";
+
+         string disabledMsg = "Trade disabled: " + disabledReason;
+         AckOrder(id, "REJECTED", "", disabledMsg);
+         Print("OrderSend failed. Retcode=10017 symbol=", brokerSymbol, " reason=", disabledReason);
+         return false;
       }
 
       string msg = "OrderSend failed. Retcode=" + IntegerToString((int)res.retcode);
