@@ -16,6 +16,9 @@ input double RiskPercentPerTrade = 1.0;
 input bool EnablePartialClose = true;
 input double PartialCloseAtR = 1.0;
 input double PartialClosePercent = 50.0;
+input bool EnforceLocalPositionLimits = true;
+input int MaxOpenPositionsByMagic = 3;
+input int MaxOpenPositionsPerSymbol = 1;
 
 CTrade trade;
 string gBridgeBaseUrl = "";
@@ -98,6 +101,61 @@ double ComputeRiskBasedVolume(const string symbol, const double entry, const dou
 
    double rawVolume = riskAmount / lossPerLotAtStop;
    return NormalizeVolume(symbol, rawVolume);
+}
+
+int CountOpenPositionsByMagicAndSymbol(const string symbol)
+{
+   int count = 0;
+   for(int i = PositionsTotal() - 1; i >= 0; i--)
+   {
+      ulong ticket = PositionGetTicket(i);
+      if(ticket == 0)
+         continue;
+
+      if(!PositionSelectByTicket(ticket))
+         continue;
+
+      if((ulong)PositionGetInteger(POSITION_MAGIC) != MagicNumber)
+         continue;
+
+      if(PositionGetString(POSITION_SYMBOL) == symbol)
+         count++;
+   }
+
+   return count;
+}
+
+int CountOpenPositionsByMagic()
+{
+   int count = 0;
+   for(int i = PositionsTotal() - 1; i >= 0; i--)
+   {
+      ulong ticket = PositionGetTicket(i);
+      if(ticket == 0)
+         continue;
+
+      if(!PositionSelectByTicket(ticket))
+         continue;
+
+      if((ulong)PositionGetInteger(POSITION_MAGIC) == MagicNumber)
+         count++;
+   }
+
+   return count;
+}
+
+bool IsLocalPositionLimitReached(const string symbol)
+{
+   if(!EnforceLocalPositionLimits)
+      return false;
+
+   if(MaxOpenPositionsByMagic > 0 && CountOpenPositionsByMagic() >= MaxOpenPositionsByMagic)
+      return true;
+
+   if(MaxOpenPositionsPerSymbol > 0 && CountOpenPositionsByMagicAndSymbol(symbol) >= MaxOpenPositionsPerSymbol)
+      return true;
+
+   return false;
 }
 
 void ApplyTrailingForAllPositions()
@@ -369,6 +427,12 @@ void EnsureStopsForOrder(
 
 bool ExecuteMarketFallback(const string brokerSymbol, const string orderType, const double lotSize, const double stopLoss, const double takeProfit, const string id)
 {
+   if(IsLocalPositionLimitReached(brokerSymbol))
+   {
+      Print("Local position limit reached for ", brokerSymbol, ". Market fallback skipped.");
+      return false;
+   }
+
    string comment = "FXB:" + StringSubstr(id, 0, 8) + ":MKT";
    bool ok = false;
    bool isBuy = (orderType == "BUY_LIMIT");
@@ -504,6 +568,12 @@ bool PlacePendingOrder(const string obj)
    if(!SymbolSelect(brokerSymbol, true))
    {
       AckOrder(id, "REJECTED", "", "Symbol not available in Market Watch");
+      return false;
+   }
+
+   if(IsLocalPositionLimitReached(brokerSymbol))
+   {
+      AckOrder(id, "REJECTED", "", "Local position limit reached before order send");
       return false;
    }
 

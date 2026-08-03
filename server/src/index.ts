@@ -112,81 +112,118 @@ const validateLiveInstrument = (
   return { ok: true };
 };
 
+type BackgroundTarget = {
+  market: MarketType;
+  symbol: string;
+  timeframe: Timeframe;
+  tradeMode: "scalp" | "day" | "swing" | "position";
+  accountBalance: number;
+  riskPercent: number;
+};
+
+const readBackgroundTargets = (): BackgroundTarget[] => {
+  const fromJson = process.env.BACKGROUND_TARGETS_JSON;
+  if (fromJson) {
+    try {
+      const parsed = JSON.parse(fromJson) as BackgroundTarget[];
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed;
+      }
+    } catch (error) {
+      console.error("Invalid BACKGROUND_TARGETS_JSON:", (error as Error).message);
+    }
+  }
+
+  return [
+    {
+      market: (process.env.BACKGROUND_MARKET ?? "forex") as MarketType,
+      symbol: process.env.BACKGROUND_SYMBOL ?? "EURUSD",
+      timeframe: (process.env.BACKGROUND_TIMEFRAME ?? "M15") as Timeframe,
+      tradeMode: (process.env.BACKGROUND_TRADE_MODE ?? "day") as "scalp" | "day" | "swing" | "position",
+      accountBalance: Number(process.env.BACKGROUND_ACCOUNT_BALANCE ?? 5000),
+      riskPercent: Number(process.env.BACKGROUND_RISK_PERCENT ?? 1)
+    }
+  ];
+};
+
 const runBackgroundAutotrade = (): void => {
   if (!backgroundAutotradeEnabled) {
     return;
   }
 
-  const market = (process.env.BACKGROUND_MARKET ?? "forex") as MarketType;
-  const symbol = process.env.BACKGROUND_SYMBOL ?? "EURUSD";
-  const timeframe = (process.env.BACKGROUND_TIMEFRAME ?? "M15") as Timeframe;
-  const tradeMode = (process.env.BACKGROUND_TRADE_MODE ?? "day") as "scalp" | "day" | "swing" | "position";
-  const accountBalance = Number(process.env.BACKGROUND_ACCOUNT_BALANCE ?? 5000);
-  const riskPercent = Number(process.env.BACKGROUND_RISK_PERCENT ?? 1);
+  const targets = readBackgroundTargets().filter((target) => {
+    const instrumentCheck = validateLiveInstrument(target.market, target.symbol);
+    if (!instrumentCheck.ok) {
+      console.error("Background target disabled:", instrumentCheck.error);
+      return false;
+    }
+    return true;
+  });
 
-  const instrumentCheck = validateLiveInstrument(market, symbol);
-  if (!instrumentCheck.ok) {
-    console.error("Background autotrade disabled:", instrumentCheck.error);
+  if (targets.length === 0) {
+    console.error("Background autotrade disabled: no valid targets.");
     return;
   }
 
   const tick = async () => {
-    try {
-      const candles = await getMarketCandles(market, symbol, timeframe, 220);
-      if (candles.length < 20) {
-        return;
-      }
+    for (const target of targets) {
+      try {
+        const candles = await getMarketCandles(target.market, target.symbol, target.timeframe, 220);
+        if (candles.length < 20) {
+          continue;
+        }
 
-      const setup = analyzeSetup({
-        pair: symbol,
-        timeframe,
-        tradeMode,
-        candles,
-        risk: { accountBalance, riskPercent },
-        quoteCurrency: "USD"
-      });
+        const setup = analyzeSetup({
+          pair: target.symbol,
+          timeframe: target.timeframe,
+          tradeMode: target.tradeMode,
+          candles,
+          risk: { accountBalance: target.accountBalance, riskPercent: target.riskPercent },
+          quoteCurrency: "USD"
+        });
 
-      const sizing = computePositionSizing({
-        accountBalance,
-        riskPercent,
-        entry: setup.entry,
-        stopLoss: setup.stopLoss,
-        pair: symbol,
-        quoteCurrency: "USD"
-      });
+        const sizing = computePositionSizing({
+          accountBalance: target.accountBalance,
+          riskPercent: target.riskPercent,
+          entry: setup.entry,
+          stopLoss: setup.stopLoss,
+          pair: target.symbol,
+          quoteCurrency: "USD"
+        });
 
-      const signalPayload = {
-        snapshot: {
-          market,
-          symbol,
-          timeframe,
-          candles
-        },
-        setup,
-        risk: sizing,
-        updatedAt: new Date().toISOString()
-      };
+        const signalPayload = {
+          snapshot: {
+            market: target.market,
+            symbol: target.symbol,
+            timeframe: target.timeframe,
+            candles
+          },
+          setup,
+          risk: sizing,
+          updatedAt: new Date().toISOString()
+        };
 
-      resolveOpenTrades(signalPayload);
-      const signalKey = `background:${market}:${symbol}:${timeframe}:${setup.appliedMode}:${setup.direction}:${setup.entry}`;
+        resolveOpenTrades(signalPayload);
+        const signalKey = `background:${target.market}:${target.symbol}:${target.timeframe}:${setup.appliedMode}:${setup.direction}:${setup.entry}`;
 
-      if (setup.direction !== "NEUTRAL" && !executedSignalKeys.has(signalKey)) {
-        const execution = await executeSignalOrder(signalPayload);
-        if (execution.executed) {
-          executedSignalKeys.add(signalKey);
-          recordSignalTrade(signalPayload, "auto-execution");
+        if (setup.direction !== "NEUTRAL" && !executedSignalKeys.has(signalKey)) {
+          const execution = await executeSignalOrder(signalPayload);
+          if (execution.executed) {
+            executedSignalKeys.add(signalKey);
+            recordSignalTrade(signalPayload, "auto-execution");
+          } else {
+            recordSignalTrade(signalPayload, "signal");
+          }
         } else {
           recordSignalTrade(signalPayload, "signal");
         }
-      } else {
-        recordSignalTrade(signalPayload, "signal");
+      } catch (error) {
+        const message = (error as Error).message;
+        if (message.includes("Yahoo data error: 429")) {
+          continue;
+        }
+        console.error("Background autotrade error:", message);
       }
-    } catch (error) {
-      const message = (error as Error).message;
-      if (message.includes("Yahoo data error: 429")) {
-        return;
-      }
-      console.error("Background autotrade error:", message);
     }
   };
 
