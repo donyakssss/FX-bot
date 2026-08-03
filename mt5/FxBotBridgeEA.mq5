@@ -243,10 +243,35 @@ bool CheckTradingAllowed(const string symbol, string &reason)
       return false;
    }
 
+   return true;
+}
+
+bool IsSymbolTradableForSide(const string symbol, const bool isBuy, string &reason)
+{
+   reason = "";
    ENUM_SYMBOL_TRADE_MODE tradeMode = (ENUM_SYMBOL_TRADE_MODE)SymbolInfoInteger(symbol, SYMBOL_TRADE_MODE);
+
    if(tradeMode == SYMBOL_TRADE_MODE_DISABLED)
    {
       reason = "Symbol trade mode is disabled by broker";
+      return false;
+   }
+
+   if(tradeMode == SYMBOL_TRADE_MODE_CLOSEONLY)
+   {
+      reason = "Symbol is close-only";
+      return false;
+   }
+
+   if(isBuy && tradeMode == SYMBOL_TRADE_MODE_SHORTONLY)
+   {
+      reason = "Symbol allows sell only";
+      return false;
+   }
+
+   if(!isBuy && tradeMode == SYMBOL_TRADE_MODE_LONGONLY)
+   {
+      reason = "Symbol allows buy only";
       return false;
    }
 
@@ -427,7 +452,7 @@ string NormalizeSymbolKey(const string symbol)
    return normalized;
 }
 
-string ResolveBrokerSymbol(const string preferredSymbol, const string baseSymbol)
+string ResolveBrokerSymbol(const string preferredSymbol, const string baseSymbol, const bool isBuy)
 {
    string exact[] = {preferredSymbol, baseSymbol};
    for(int i = 0; i < ArraySize(exact); i++)
@@ -435,7 +460,8 @@ string ResolveBrokerSymbol(const string preferredSymbol, const string baseSymbol
       string candidate = exact[i];
       if(candidate == "")
          continue;
-      if(SymbolSelect(candidate, true))
+      string sideReason = "";
+      if(SymbolSelect(candidate, true) && IsSymbolTradableForSide(candidate, isBuy, sideReason))
          return candidate;
    }
 
@@ -450,7 +476,8 @@ string ResolveBrokerSymbol(const string preferredSymbol, const string baseSymbol
       string marketKey = NormalizeSymbolKey(marketSymbol);
       if(StringFind(marketKey, requestedKey) >= 0 || StringFind(requestedKey, marketKey) >= 0)
       {
-         if(SymbolSelect(marketSymbol, true))
+         string sideReason = "";
+         if(SymbolSelect(marketSymbol, true) && IsSymbolTradableForSide(marketSymbol, isBuy, sideReason))
             return marketSymbol;
       }
    }
@@ -758,12 +785,29 @@ bool PlacePendingOrder(const string obj)
       return false;
    }
 
+   bool isBuyOrder = (orderType == "BUY_LIMIT");
+
    if(!SymbolSelect(brokerSymbol, true))
    {
-      brokerSymbol = ResolveBrokerSymbol(brokerSymbol, symbol);
+      brokerSymbol = ResolveBrokerSymbol(brokerSymbol, symbol, isBuyOrder);
       if(!SymbolSelect(brokerSymbol, true))
       {
          AckOrder(id, "REJECTED", "", "Symbol not available in Market Watch");
+         return false;
+      }
+   }
+
+   string sideReason = "";
+   if(!IsSymbolTradableForSide(brokerSymbol, isBuyOrder, sideReason))
+   {
+      string previous = brokerSymbol;
+      brokerSymbol = ResolveBrokerSymbol(brokerSymbol, symbol, isBuyOrder);
+      if(previous != brokerSymbol)
+         Print("Resolved alternate tradable symbol. From=", previous, " To=", brokerSymbol);
+
+      if(!IsSymbolTradableForSide(brokerSymbol, isBuyOrder, sideReason))
+      {
+         AckOrder(id, "REJECTED", "", sideReason + ". Symbol=" + brokerSymbol);
          return false;
       }
    }
