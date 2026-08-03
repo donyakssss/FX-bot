@@ -8,7 +8,7 @@ const BINANCE_FALLBACK_SYMBOLS: Record<string, string> = {
   GBPUSD: "GBPUSDT",
   AUDUSD: "AUDUSDT",
   NZDUSD: "NZDUSDT",
-  XAUUSD: "XAUUSDT"
+  XAUUSD: "PAXGUSDT"
 };
 
 export async function getMarketCandles(
