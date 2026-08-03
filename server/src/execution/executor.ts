@@ -17,6 +17,14 @@ const autoEnabled = process.env.ENABLE_AUTO_EXECUTION === "true";
 const mt5Prefix = process.env.MT5_SYMBOL_PREFIX ?? "";
 const mt5Suffix = process.env.MT5_SYMBOL_SUFFIX ?? "";
 
+const normalizeCryptoSymbolForMt5 = (symbol: string): string => {
+  const upper = symbol.toUpperCase();
+  if (upper.endsWith("USDT") || upper.endsWith("USDC") || upper.endsWith("BUSD")) {
+    return `${upper.slice(0, -4)}USD`;
+  }
+  return upper;
+};
+
 const parseSymbolMap = (): Record<string, string> => {
   try {
     const raw = process.env.MT5_SYMBOL_MAP_JSON;
@@ -38,11 +46,13 @@ const mapSymbolForMt5 = (symbol: string): string => {
     return mt5SymbolMap[symbol];
   }
 
+  const normalized = normalizeCryptoSymbolForMt5(symbol);
+
   if (mt5Prefix.length > 0 || mt5Suffix.length > 0) {
-    return `${mt5Prefix}${symbol}${mt5Suffix}`;
+    return `${mt5Prefix}${normalized}${mt5Suffix}`;
   }
 
-  return symbol;
+  return normalized;
 };
 
 const trailingByMode = (mode: SignalPayload["setup"]["appliedMode"]) => {
@@ -116,11 +126,16 @@ const executeBinance = async (payload: SignalPayload): Promise<ExecutionResult> 
 };
 
 const executeMt5 = async (payload: SignalPayload): Promise<ExecutionResult> => {
-  if (payload.snapshot.market !== "forex" && payload.snapshot.market !== "metals" && payload.snapshot.market !== "indices") {
+  if (
+    payload.snapshot.market !== "forex" &&
+    payload.snapshot.market !== "metals" &&
+    payload.snapshot.market !== "indices" &&
+    payload.snapshot.market !== "crypto"
+  ) {
     return {
       executed: false,
       broker: "mt5",
-      message: `MT5 bridge supports forex/metals/indices only. Received ${payload.snapshot.market}.`
+      message: `MT5 bridge supports forex/metals/indices/crypto only. Received ${payload.snapshot.market}.`
     };
   }
 
