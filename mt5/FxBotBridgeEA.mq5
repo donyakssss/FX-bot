@@ -290,7 +290,9 @@ bool HttpGet(const string url, string &response)
 bool HttpPost(const string url, const string body, string &response)
 {
    char data[];
-   StringToCharArray(body, data, 0, WHOLE_ARRAY, CP_UTF8);
+   int bodyLen = StringLen(body);
+   ArrayResize(data, bodyLen);
+   StringToCharArray(body, data, 0, bodyLen, CP_UTF8);
 
    char result[];
    string resultHeaders = "";
