@@ -227,6 +227,30 @@ bool ParseOrders(const string response, string &orderObjects[])
    return true;
 }
 
+bool ExecuteMarketFallback(const string brokerSymbol, const string orderType, const double lotSize, const double stopLoss, const double takeProfit, const string id)
+{
+   string comment = "FXB:" + StringSubstr(id, 0, 8) + ":MKT";
+   bool ok = false;
+
+   if(orderType == "BUY_LIMIT")
+   {
+      ok = trade.Buy(lotSize, brokerSymbol, 0.0, stopLoss, takeProfit, comment);
+   }
+   else if(orderType == "SELL_LIMIT")
+   {
+      ok = trade.Sell(lotSize, brokerSymbol, 0.0, stopLoss, takeProfit, comment);
+   }
+
+   if(!ok)
+   {
+      Print("Market fallback failed. Retcode=", trade.ResultRetcode(), " Symbol=", brokerSymbol, " Type=", orderType);
+      return false;
+   }
+
+   Print("Market fallback executed. Order=", trade.ResultOrder(), " Deal=", trade.ResultDeal(), " Symbol=", brokerSymbol);
+   return true;
+}
+
 bool HttpGet(const string url, string &response)
 {
    char data[];
@@ -332,6 +356,35 @@ bool PlacePendingOrder(const string obj)
       return false;
    }
 
+   double bid = SymbolInfoDouble(brokerSymbol, SYMBOL_BID);
+   double ask = SymbolInfoDouble(brokerSymbol, SYMBOL_ASK);
+   double point = SymbolInfoDouble(brokerSymbol, SYMBOL_POINT);
+   int stopsLevel = (int)SymbolInfoInteger(brokerSymbol, SYMBOL_TRADE_STOPS_LEVEL);
+   double minDistance = MathMax(point * stopsLevel, point * 5.0);
+   bool validPending = true;
+
+   if(orderType == "BUY_LIMIT")
+   {
+      validPending = entry < (ask - minDistance);
+   }
+   else if(orderType == "SELL_LIMIT")
+   {
+      validPending = entry > (bid + minDistance);
+   }
+
+   if(!validPending)
+   {
+      Print("Pending entry invalid for ", brokerSymbol, ". Switching to market order. Entry=", entry, " Bid=", bid, " Ask=", ask, " MinDistance=", minDistance);
+      if(ExecuteMarketFallback(brokerSymbol, orderType, lotSize, stopLoss, takeProfit, id))
+      {
+         AckOrder(id, "FILLED", IntegerToString((int)trade.ResultOrder()), "Order executed as market fallback because pending entry was invalid");
+         return true;
+      }
+
+      AckOrder(id, "REJECTED", "", "Market fallback failed after invalid pending entry");
+      return false;
+   }
+
    MqlTradeRequest req;
    MqlTradeResult res;
    ZeroMemory(req);
@@ -406,6 +459,7 @@ void PollBridge()
 int OnInit()
 {
    trade.SetExpertMagicNumber(MagicNumber);
+   trade.SetDeviationInPoints(20);
    EventSetTimer(PollIntervalSec);
    Print("FX Bot Bridge EA initialized. Poll interval=", PollIntervalSec, "s");
    Print("Remember to allow WebRequest URL: ", BridgeBaseUrl);
