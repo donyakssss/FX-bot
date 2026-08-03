@@ -33,4 +33,4 @@ services:
     staticPublishPath: client/dist
     envVars:
       - key: VITE_API_URL
-        value: https://fx-bot-api.onrender.com
+        value: http://147.15.143.184:4000
