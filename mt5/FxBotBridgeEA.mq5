@@ -81,21 +81,23 @@ double NormalizeVolume(const string symbol, const double volume)
    return NormalizeDouble(rounded, volumeDigits);
 }
 
-double ComputeRiskBasedVolume(const string symbol, const double entry, const double stopLoss, const double fallbackVolume)
+double ComputeRiskBasedVolume(const string symbol, const bool isBuy, const double entry, const double stopLoss, const double fallbackVolume)
 {
    if(!AutoLotByAccountRisk)
       return NormalizeVolume(symbol, fallbackVolume);
 
    double balance = AccountInfoDouble(ACCOUNT_BALANCE);
    double riskAmount = balance * (RiskPercentPerTrade / 100.0);
-   double stopDistance = MathAbs(entry - stopLoss);
-   double tickSize = SymbolInfoDouble(symbol, SYMBOL_TRADE_TICK_SIZE);
-   double tickValue = SymbolInfoDouble(symbol, SYMBOL_TRADE_TICK_VALUE);
 
-   if(riskAmount <= 0.0 || stopDistance <= 0.0 || tickSize <= 0.0 || tickValue <= 0.0)
+   if(riskAmount <= 0.0 || entry <= 0.0 || stopLoss <= 0.0 || MathAbs(entry - stopLoss) <= 0.0)
       return NormalizeVolume(symbol, fallbackVolume);
 
-   double lossPerLotAtStop = (stopDistance / tickSize) * tickValue;
+   double oneLotProfit = 0.0;
+   ENUM_ORDER_TYPE side = isBuy ? ORDER_TYPE_BUY : ORDER_TYPE_SELL;
+   if(!OrderCalcProfit(side, symbol, 1.0, entry, stopLoss, oneLotProfit))
+      return NormalizeVolume(symbol, fallbackVolume);
+
+   double lossPerLotAtStop = MathAbs(oneLotProfit);
    if(lossPerLotAtStop <= 0.0)
       return NormalizeVolume(symbol, fallbackVolume);
 
@@ -458,7 +460,7 @@ bool ExecuteMarketFallback(const string brokerSymbol, const string orderType, co
    double marketPrice = isBuy ? SymbolInfoDouble(brokerSymbol, SYMBOL_ASK) : SymbolInfoDouble(brokerSymbol, SYMBOL_BID);
    double adjustedSl = stopLoss;
    double adjustedTp = takeProfit;
-   double tradeVolume = ComputeRiskBasedVolume(brokerSymbol, marketPrice, adjustedSl, lotSize);
+   double tradeVolume = ComputeRiskBasedVolume(brokerSymbol, isBuy, marketPrice, adjustedSl, lotSize);
 
    EnsureStopsForOrder(brokerSymbol, isBuy, marketPrice, adjustedSl, adjustedTp);
 
@@ -607,13 +609,13 @@ bool PlacePendingOrder(const string obj)
    {
       validPending = entry < (ask - minDistance);
       EnsureStopsForOrder(brokerSymbol, true, entry, adjustedStopLoss, adjustedTakeProfit);
-      tradeVolume = ComputeRiskBasedVolume(brokerSymbol, entry, adjustedStopLoss, lotSize);
+      tradeVolume = ComputeRiskBasedVolume(brokerSymbol, true, entry, adjustedStopLoss, lotSize);
    }
    else if(orderType == "SELL_LIMIT")
    {
       validPending = entry > (bid + minDistance);
       EnsureStopsForOrder(brokerSymbol, false, entry, adjustedStopLoss, adjustedTakeProfit);
-      tradeVolume = ComputeRiskBasedVolume(brokerSymbol, entry, adjustedStopLoss, lotSize);
+      tradeVolume = ComputeRiskBasedVolume(brokerSymbol, false, entry, adjustedStopLoss, lotSize);
    }
 
    if(!validPending)
