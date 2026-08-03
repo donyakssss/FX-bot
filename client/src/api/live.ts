@@ -1,5 +1,5 @@
 import { io, type Socket } from "socket.io-client";
-import { resolveApiBase } from "./base";
+import { isInsecureApiBase, resolveApiBase } from "./base";
 
 export type MarketType = "forex" | "crypto" | "indices" | "metals" | "synthetics";
 export type Timeframe = "M1" | "M5" | "M15" | "M30" | "H1" | "H4" | "D1";
@@ -59,6 +59,8 @@ export type LiveUpdate = {
 };
 
 const API_BASE = resolveApiBase();
+
+export const API_BASE_IS_INSECURE = isInsecureApiBase(API_BASE);
 
 export async function getInstruments(): Promise<Instrument[]> {
   const response = await fetch(`${API_BASE}/api/instruments`);

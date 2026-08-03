@@ -5,6 +5,7 @@ import {
   analyzeLive,
   connectLiveSocket,
   getInstruments,
+  API_BASE_IS_INSECURE,
   type Instrument,
   type LiveUpdate,
   type MarketType,
@@ -152,6 +153,11 @@ export default function App() {
   }, [favorites, balance, riskPercent, tradeMode, autoAnalyze, connected]);
 
   useEffect(() => {
+    if (API_BASE_IS_INSECURE) {
+      setError("The configured API URL uses http://. A Render-hosted website over HTTPS cannot call it; use HTTPS on the VPS or switch the web app back to an HTTPS API.");
+      return;
+    }
+
     if (!connected || !autoAnalyze) {
       return;
     }

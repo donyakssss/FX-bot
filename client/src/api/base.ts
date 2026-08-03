@@ -20,3 +20,5 @@ export const resolveApiBase = (): string => {
 
   return DEFAULT_RENDER_API_BASE;
 };
+
+export const isInsecureApiBase = (apiBase: string): boolean => apiBase.startsWith("http://");
