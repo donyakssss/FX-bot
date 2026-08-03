@@ -156,29 +156,18 @@ string JsonEscape(const string value)
 
 string UrlEncode(const string value)
 {
-   ushort raw[];
-   StringToCharArray(value, raw, 0, WHOLE_ARRAY, CP_UTF8);
-
-   string encoded = "";
-   int n = ArraySize(raw);
-   for(int i = 0; i < n; i++)
-   {
-      int b = (int)(raw[i] & 0x00FF);
-      if(b == 0)
-         break;
-
-      bool safe =
-         (b >= 'a' && b <= 'z') ||
-         (b >= 'A' && b <= 'Z') ||
-         (b >= '0' && b <= '9') ||
-         b == '-' || b == '_' || b == '.' || b == '~';
-
-      if(safe)
-         encoded += CharToString((ushort)b);
-      else
-         encoded += "%" + StringFormat("%02X", b);
-   }
-
+   string encoded = value;
+   StringReplace(encoded, "%", "%25");
+   StringReplace(encoded, " ", "%20");
+   StringReplace(encoded, "?", "%3F");
+   StringReplace(encoded, "&", "%26");
+   StringReplace(encoded, "=", "%3D");
+   StringReplace(encoded, "+", "%2B");
+   StringReplace(encoded, "#", "%23");
+   StringReplace(encoded, "/", "%2F");
+   StringReplace(encoded, "\"", "%22");
+   StringReplace(encoded, "\r", "%0D");
+   StringReplace(encoded, "\n", "%0A");
    return encoded;
 }
 
