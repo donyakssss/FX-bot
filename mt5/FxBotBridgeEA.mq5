@@ -156,14 +156,14 @@ string JsonEscape(const string value)
 
 string UrlEncode(const string value)
 {
-   uchar bytes[];
-   StringToCharArray(value, bytes, 0, WHOLE_ARRAY, CP_UTF8);
+   ushort raw[];
+   StringToCharArray(value, raw, 0, WHOLE_ARRAY, CP_UTF8);
 
    string encoded = "";
-   int n = ArraySize(bytes);
+   int n = ArraySize(raw);
    for(int i = 0; i < n; i++)
    {
-      int b = (int)bytes[i];
+      int b = (int)(raw[i] & 0x00FF);
       if(b == 0)
          break;
 
