@@ -16,6 +16,8 @@ const app = express();
 const port = process.env.PORT ?? 4000;
 const marketPollIntervalMs = Number(process.env.MARKET_POLL_INTERVAL_MS ?? 15000);
 const watchlistPollIntervalMs = Number(process.env.WATCHLIST_POLL_INTERVAL_MS ?? 30000);
+const backgroundAutotradeEnabled = process.env.BACKGROUND_AUTOTRADE_ENABLED === "true";
+const backgroundPollIntervalMs = Number(process.env.BACKGROUND_POLL_INTERVAL_MS ?? 20000);
 const executedSignalKeys = new Set<string>();
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
@@ -108,6 +110,90 @@ const validateLiveInstrument = (
   }
 
   return { ok: true };
+};
+
+const runBackgroundAutotrade = (): void => {
+  if (!backgroundAutotradeEnabled) {
+    return;
+  }
+
+  const market = (process.env.BACKGROUND_MARKET ?? "forex") as MarketType;
+  const symbol = process.env.BACKGROUND_SYMBOL ?? "EURUSD";
+  const timeframe = (process.env.BACKGROUND_TIMEFRAME ?? "M15") as Timeframe;
+  const tradeMode = (process.env.BACKGROUND_TRADE_MODE ?? "day") as "scalp" | "day" | "swing" | "position";
+  const accountBalance = Number(process.env.BACKGROUND_ACCOUNT_BALANCE ?? 5000);
+  const riskPercent = Number(process.env.BACKGROUND_RISK_PERCENT ?? 1);
+
+  const instrumentCheck = validateLiveInstrument(market, symbol);
+  if (!instrumentCheck.ok) {
+    console.error("Background autotrade disabled:", instrumentCheck.error);
+    return;
+  }
+
+  const tick = async () => {
+    try {
+      const candles = await getMarketCandles(market, symbol, timeframe, 220);
+      if (candles.length < 20) {
+        return;
+      }
+
+      const setup = analyzeSetup({
+        pair: symbol,
+        timeframe,
+        tradeMode,
+        candles,
+        risk: { accountBalance, riskPercent },
+        quoteCurrency: "USD"
+      });
+
+      const sizing = computePositionSizing({
+        accountBalance,
+        riskPercent,
+        entry: setup.entry,
+        stopLoss: setup.stopLoss,
+        pair: symbol,
+        quoteCurrency: "USD"
+      });
+
+      const signalPayload = {
+        snapshot: {
+          market,
+          symbol,
+          timeframe,
+          candles
+        },
+        setup,
+        risk: sizing,
+        updatedAt: new Date().toISOString()
+      };
+
+      resolveOpenTrades(signalPayload);
+      const signalKey = `background:${market}:${symbol}:${timeframe}:${setup.appliedMode}:${setup.direction}:${setup.entry}`;
+
+      if (setup.direction !== "NEUTRAL" && !executedSignalKeys.has(signalKey)) {
+        const execution = await executeSignalOrder(signalPayload);
+        if (execution.executed) {
+          executedSignalKeys.add(signalKey);
+          recordSignalTrade(signalPayload, "auto-execution");
+        } else {
+          recordSignalTrade(signalPayload, "signal");
+        }
+      } else {
+        recordSignalTrade(signalPayload, "signal");
+      }
+    } catch (error) {
+      const message = (error as Error).message;
+      if (message.includes("Yahoo data error: 429")) {
+        return;
+      }
+      console.error("Background autotrade error:", message);
+    }
+  };
+
+  void tick();
+  setInterval(() => {
+    void tick();
+  }, backgroundPollIntervalMs);
 };
 
 app.get("/api/mt5/orders/pending", (req, res) => {
@@ -515,4 +601,5 @@ console.log("======================================");
 
 httpServer.listen(port, () => {
   console.log(`FX bot server listening on port ${port}`);
+  runBackgroundAutotrade();
 });

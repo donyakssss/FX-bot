@@ -11,6 +11,11 @@ input int RequestTimeoutMs = 15000;
 input bool RestrictToCurrentChartSymbol = false;
 input int MaxOrdersPerPoll = 5;
 input ulong MagicNumber = 20260714;
+input bool AutoLotByAccountRisk = true;
+input double RiskPercentPerTrade = 1.0;
+input bool EnablePartialClose = true;
+input double PartialCloseAtR = 1.0;
+input double PartialClosePercent = 50.0;
 
 CTrade trade;
 string gBridgeBaseUrl = "";
@@ -21,6 +26,7 @@ double gTrailInitialSl[];
 double gTrailBreakEvenR[];
 double gTrailStartR[];
 double gTrailStepR[];
+bool gPartialTaken[];
 
 int FindTrailIndex(const string symbol)
 {
@@ -44,6 +50,7 @@ void UpsertTrailContext(const string symbol, const double entry, const double in
       ArrayResize(gTrailBreakEvenR, n + 1);
       ArrayResize(gTrailStartR, n + 1);
       ArrayResize(gTrailStepR, n + 1);
+      ArrayResize(gPartialTaken, n + 1);
       idx = n;
    }
 
@@ -53,6 +60,44 @@ void UpsertTrailContext(const string symbol, const double entry, const double in
    gTrailBreakEvenR[idx] = breakEvenR;
    gTrailStartR[idx] = trailStartR;
    gTrailStepR[idx] = trailStepR;
+   gPartialTaken[idx] = false;
+}
+
+double NormalizeVolume(const string symbol, const double volume)
+{
+   double minVol = SymbolInfoDouble(symbol, SYMBOL_VOLUME_MIN);
+   double maxVol = SymbolInfoDouble(symbol, SYMBOL_VOLUME_MAX);
+   double step = SymbolInfoDouble(symbol, SYMBOL_VOLUME_STEP);
+
+   if(step <= 0.0)
+      return MathMax(minVol, MathMin(maxVol, volume));
+
+   double rounded = MathFloor(volume / step) * step;
+   rounded = MathMax(minVol, MathMin(maxVol, rounded));
+   int volumeDigits = 2;
+   return NormalizeDouble(rounded, volumeDigits);
+}
+
+double ComputeRiskBasedVolume(const string symbol, const double entry, const double stopLoss, const double fallbackVolume)
+{
+   if(!AutoLotByAccountRisk)
+      return NormalizeVolume(symbol, fallbackVolume);
+
+   double balance = AccountInfoDouble(ACCOUNT_BALANCE);
+   double riskAmount = balance * (RiskPercentPerTrade / 100.0);
+   double stopDistance = MathAbs(entry - stopLoss);
+   double tickSize = SymbolInfoDouble(symbol, SYMBOL_TRADE_TICK_SIZE);
+   double tickValue = SymbolInfoDouble(symbol, SYMBOL_TRADE_TICK_VALUE);
+
+   if(riskAmount <= 0.0 || stopDistance <= 0.0 || tickSize <= 0.0 || tickValue <= 0.0)
+      return NormalizeVolume(symbol, fallbackVolume);
+
+   double lossPerLotAtStop = (stopDistance / tickSize) * tickValue;
+   if(lossPerLotAtStop <= 0.0)
+      return NormalizeVolume(symbol, fallbackVolume);
+
+   double rawVolume = riskAmount / lossPerLotAtStop;
+   return NormalizeVolume(symbol, rawVolume);
 }
 
 void ApplyTrailingForAllPositions()
@@ -87,11 +132,12 @@ void ApplyTrailingForAllPositions()
       double startR = gTrailStartR[idx];
       double stepR = gTrailStepR[idx];
       double newSl = currentSl;
+      double rNow = 0.0;
 
       if(posType == POSITION_TYPE_BUY)
       {
          double bid = SymbolInfoDouble(symbol, SYMBOL_BID);
-         double rNow = (bid - entry) / risk;
+         rNow = (bid - entry) / risk;
 
          if(rNow >= breakEvenR && (currentSl < entry || currentSl == 0.0))
             newSl = entry;
@@ -106,7 +152,7 @@ void ApplyTrailingForAllPositions()
       else if(posType == POSITION_TYPE_SELL)
       {
          double ask = SymbolInfoDouble(symbol, SYMBOL_ASK);
-         double rNow = (entry - ask) / risk;
+         rNow = (entry - ask) / risk;
 
          if(rNow >= breakEvenR && (currentSl > entry || currentSl == 0.0))
             newSl = entry;
@@ -116,6 +162,28 @@ void ApplyTrailingForAllPositions()
             double candidate = ask + (risk * stepR);
             if(newSl == 0.0 || candidate < newSl)
                newSl = candidate;
+         }
+      }
+
+      if(EnablePartialClose && !gPartialTaken[idx] && rNow >= PartialCloseAtR)
+      {
+         double currentVolume = PositionGetDouble(POSITION_VOLUME);
+         double step = SymbolInfoDouble(symbol, SYMBOL_VOLUME_STEP);
+         double minVol = SymbolInfoDouble(symbol, SYMBOL_VOLUME_MIN);
+         double closeVolume = currentVolume * (PartialClosePercent / 100.0);
+         closeVolume = NormalizeVolume(symbol, closeVolume);
+
+         if(closeVolume >= minVol && (currentVolume - closeVolume) >= minVol)
+         {
+            if(trade.PositionClosePartial(ticket, closeVolume))
+            {
+               gPartialTaken[idx] = true;
+               Print("Partial close executed. Symbol=", symbol, " ClosedLots=", closeVolume, " Remaining=", PositionGetDouble(POSITION_VOLUME));
+            }
+            else
+            {
+               Print("Partial close failed. Symbol=", symbol, " Retcode=", trade.ResultRetcode());
+            }
          }
       }
 
@@ -307,16 +375,17 @@ bool ExecuteMarketFallback(const string brokerSymbol, const string orderType, co
    double marketPrice = isBuy ? SymbolInfoDouble(brokerSymbol, SYMBOL_ASK) : SymbolInfoDouble(brokerSymbol, SYMBOL_BID);
    double adjustedSl = stopLoss;
    double adjustedTp = takeProfit;
+   double tradeVolume = ComputeRiskBasedVolume(brokerSymbol, marketPrice, adjustedSl, lotSize);
 
    EnsureStopsForOrder(brokerSymbol, isBuy, marketPrice, adjustedSl, adjustedTp);
 
    if(orderType == "BUY_LIMIT")
    {
-      ok = trade.Buy(lotSize, brokerSymbol, 0.0, adjustedSl, adjustedTp, comment);
+      ok = trade.Buy(tradeVolume, brokerSymbol, 0.0, adjustedSl, adjustedTp, comment);
    }
    else if(orderType == "SELL_LIMIT")
    {
-      ok = trade.Sell(lotSize, brokerSymbol, 0.0, adjustedSl, adjustedTp, comment);
+      ok = trade.Sell(tradeVolume, brokerSymbol, 0.0, adjustedSl, adjustedTp, comment);
    }
 
    if(!ok)
@@ -415,6 +484,7 @@ bool PlacePendingOrder(const string obj)
    double trailStepR = StringToDouble(ExtractJsonValue(obj, "trailStepR"));
    double adjustedStopLoss = stopLoss;
    double adjustedTakeProfit = takeProfit;
+   double tradeVolume = lotSize;
 
    if(brokerSymbol == "")
       brokerSymbol = symbol;
@@ -448,11 +518,13 @@ bool PlacePendingOrder(const string obj)
    {
       validPending = entry < (ask - minDistance);
       EnsureStopsForOrder(brokerSymbol, true, entry, adjustedStopLoss, adjustedTakeProfit);
+      tradeVolume = ComputeRiskBasedVolume(brokerSymbol, entry, adjustedStopLoss, lotSize);
    }
    else if(orderType == "SELL_LIMIT")
    {
       validPending = entry > (bid + minDistance);
       EnsureStopsForOrder(brokerSymbol, false, entry, adjustedStopLoss, adjustedTakeProfit);
+      tradeVolume = ComputeRiskBasedVolume(brokerSymbol, entry, adjustedStopLoss, lotSize);
    }
 
    if(!validPending)
@@ -476,7 +548,7 @@ bool PlacePendingOrder(const string obj)
 
    req.action = TRADE_ACTION_PENDING;
    req.symbol = brokerSymbol;
-   req.volume = lotSize;
+   req.volume = tradeVolume;
    req.magic = MagicNumber;
    req.deviation = 10;
    req.type_time = ORDER_TIME_GTC;
