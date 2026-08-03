@@ -191,6 +191,9 @@ void ApplyTrailingForAllPositions()
       double stepR = gTrailStepR[idx];
       double newSl = currentSl;
       double rNow = 0.0;
+      double point = SymbolInfoDouble(symbol, SYMBOL_POINT);
+      double minDistance = MinStopDistance(symbol);
+      int digits = (int)SymbolInfoInteger(symbol, SYMBOL_DIGITS);
 
       if(posType == POSITION_TYPE_BUY)
       {
@@ -206,6 +209,9 @@ void ApplyTrailingForAllPositions()
             if(candidate > newSl)
                newSl = candidate;
          }
+
+         if(newSl > 0.0)
+            newSl = MathMin(newSl, bid - minDistance);
       }
       else if(posType == POSITION_TYPE_SELL)
       {
@@ -221,6 +227,9 @@ void ApplyTrailingForAllPositions()
             if(newSl == 0.0 || candidate < newSl)
                newSl = candidate;
          }
+
+         if(newSl > 0.0)
+            newSl = MathMax(newSl, ask + minDistance);
       }
 
       if(EnablePartialClose && !gPartialTaken[idx] && rNow >= PartialCloseAtR)
@@ -245,10 +254,20 @@ void ApplyTrailingForAllPositions()
          }
       }
 
-      if(newSl != currentSl && newSl > 0.0)
+      if(newSl > 0.0)
       {
-         if(!trade.PositionModify(symbol, NormalizeDouble(newSl, (int)SymbolInfoInteger(symbol, SYMBOL_DIGITS)), tp))
-            Print("Trailing modify failed on ", symbol, " err=", GetLastError());
+         newSl = NormalizeDouble(newSl, digits);
+
+         // Skip no-op trailing updates to avoid retcode/no-change spam.
+         if(currentSl > 0.0 && MathAbs(newSl - currentSl) <= (point * 0.5))
+            continue;
+
+         if(!trade.PositionModify(symbol, newSl, tp))
+         {
+            int ret = (int)trade.ResultRetcode();
+            if(ret != TRADE_RETCODE_NO_CHANGES)
+               Print("Trailing modify failed on ", symbol, " retcode=", ret, " err=", GetLastError());
+         }
       }
    }
 }
