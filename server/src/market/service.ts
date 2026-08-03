@@ -3,6 +3,14 @@ import type { MarketType, Timeframe } from "../types/market.js";
 import { findInstrument } from "./catalog.js";
 import { fetchBinanceCandles, fetchDerivCandles, fetchYahooCandles } from "./fetchers.js";
 
+const BINANCE_FALLBACK_SYMBOLS: Record<string, string> = {
+  EURUSD: "EURUSDT",
+  GBPUSD: "GBPUSDT",
+  AUDUSD: "AUDUSDT",
+  NZDUSD: "NZDUSDT",
+  XAUUSD: "XAUUSDT"
+};
+
 export async function getMarketCandles(
   market: MarketType,
   symbol: string,
@@ -23,5 +31,26 @@ export async function getMarketCandles(
     return fetchDerivCandles(instrument, timeframe, limit);
   }
 
-  return fetchYahooCandles(instrument, timeframe, limit);
+  try {
+    return await fetchYahooCandles(instrument, timeframe, limit);
+  } catch (error) {
+    const message = (error as Error).message;
+    if (!message.includes("Yahoo data error: 429")) {
+      throw error;
+    }
+
+    const fallbackSymbol = BINANCE_FALLBACK_SYMBOLS[symbol.toUpperCase()];
+    if (!fallbackSymbol) {
+      throw error;
+    }
+
+    return fetchBinanceCandles(
+      {
+        ...instrument,
+        providerSymbol: fallbackSymbol
+      },
+      timeframe,
+      limit
+    );
+  }
 }
