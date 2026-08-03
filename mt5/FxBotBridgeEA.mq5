@@ -1,5 +1,5 @@
 #property strict
-#property version   "1.01"
+#property version   "1.02"
 #property description "FX Bot MT5 Bridge EA: polls pending orders from Node API and places MT5 pending orders."
 
 #include <Trade/Trade.mqh>
@@ -563,12 +563,17 @@ bool ExecuteMarketFallback(const string brokerSymbol, const string orderType, co
    string comment = "FXB:" + StringSubstr(id, 0, 8) + ":MKT";
    bool ok = false;
    bool isBuy = (orderType == "BUY_LIMIT");
-   double marketPrice = isBuy ? SymbolInfoDouble(brokerSymbol, SYMBOL_ASK) : SymbolInfoDouble(brokerSymbol, SYMBOL_BID);
+   double bid = SymbolInfoDouble(brokerSymbol, SYMBOL_BID);
+   double ask = SymbolInfoDouble(brokerSymbol, SYMBOL_ASK);
+   double marketPrice = isBuy ? ask : bid;
+   double stopReferencePrice = ask;
    double adjustedSl = stopLoss;
    double adjustedTp = takeProfit;
    double tradeVolume = ComputeRiskBasedVolume(brokerSymbol, isBuy, marketPrice, adjustedSl, lotSize);
 
-   EnsureStopsForOrder(brokerSymbol, isBuy, marketPrice, adjustedSl, adjustedTp);
+   EnsureStopsForOrder(brokerSymbol, isBuy, stopReferencePrice, adjustedSl, adjustedTp);
+
+   Print("Market fallback normalized stops. Symbol=", brokerSymbol, " Side=", (isBuy ? "BUY" : "SELL"), " Bid=", bid, " Ask=", ask, " SL=", adjustedSl, " TP=", adjustedTp, " Volume=", tradeVolume);
 
    if(orderType == "BUY_LIMIT")
    {
@@ -838,7 +843,7 @@ int OnInit()
    trade.SetExpertMagicNumber(MagicNumber);
    trade.SetDeviationInPoints(20);
    EventSetTimer(PollIntervalSec);
-   Print("FX Bot Bridge EA build=1.01");
+   Print("FX Bot Bridge EA build=1.02");
    Print("FX Bot Bridge EA initialized. Poll interval=", PollIntervalSec, "s");
    Print("Remember to allow WebRequest URL: ", gBridgeBaseUrl);
 
