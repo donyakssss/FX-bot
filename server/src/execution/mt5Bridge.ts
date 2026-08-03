@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-type Mt5OrderStatus = "PENDING" | "FILLED" | "REJECTED";
+type Mt5OrderStatus = "PENDING" | "PROCESSING" | "FILLED" | "REJECTED";
 
 export type Mt5TrailingRules = {
   breakEvenR: number;
@@ -24,12 +24,15 @@ export type Mt5QueuedOrder = {
   trailing: Mt5TrailingRules;
   createdAt: string;
   status: Mt5OrderStatus;
+  claimedAt?: string;
+  claimOwner?: string;
   ticket?: string;
   note?: string;
 };
 
 const dataDir = join(process.cwd(), "data");
 const filePath = join(dataDir, "mt5-orders.json");
+const claimTtlMs = Number(process.env.MT5_ORDER_CLAIM_TTL_MS ?? 30000);
 
 const ensureStore = (): void => {
   if (!existsSync(dataDir)) {
@@ -69,6 +72,56 @@ export const listPendingMt5Orders = (): Mt5QueuedOrder[] =>
     .filter((order) => order.status === "PENDING")
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 
+export const claimPendingMt5Orders = (maxCount: number, owner = "mt5-ea"): Mt5QueuedOrder[] => {
+  const orders = load();
+  const now = Date.now();
+  let changed = false;
+
+  for (const order of orders) {
+    if (order.status !== "PROCESSING" || !order.claimedAt) {
+      continue;
+    }
+
+    const claimedAtMs = Date.parse(order.claimedAt);
+    if (!Number.isFinite(claimedAtMs)) {
+      order.status = "PENDING";
+      delete order.claimedAt;
+      delete order.claimOwner;
+      changed = true;
+      continue;
+    }
+
+    if (now - claimedAtMs > claimTtlMs) {
+      order.status = "PENDING";
+      delete order.claimedAt;
+      delete order.claimOwner;
+      changed = true;
+    }
+  }
+
+  const claimed: Mt5QueuedOrder[] = [];
+  for (const order of orders.sort((a, b) => a.createdAt.localeCompare(b.createdAt))) {
+    if (claimed.length >= maxCount) {
+      break;
+    }
+    if (order.status !== "PENDING") {
+      continue;
+    }
+
+    order.status = "PROCESSING";
+    order.claimedAt = new Date(now).toISOString();
+    order.claimOwner = owner;
+    claimed.push(order);
+    changed = true;
+  }
+
+  if (changed) {
+    save(orders);
+  }
+
+  return claimed;
+};
+
 export const listAllMt5Orders = (): Mt5QueuedOrder[] => load();
 
 export const ackMt5Order = (id: string, status: "FILLED" | "REJECTED", ticket?: string, note?: string): Mt5QueuedOrder | null => {
@@ -90,6 +143,8 @@ export const ackMt5Order = (id: string, status: "FILLED" | "REJECTED", ticket?: 
   }
 
   target.status = status;
+  delete target.claimedAt;
+  delete target.claimOwner;
   target.ticket = ticket;
   target.note = note;
   save(orders);

@@ -936,6 +936,8 @@ bool PlacePendingOrder(const string obj)
 void PollBridge()
 {
    string url = BuildMt5Url("/api/mt5/orders/pending");
+   url += "&max=" + IntegerToString(MaxOrdersPerPoll);
+   url += "&mt5Owner=" + UrlEncode(IntegerToString((int)AccountInfoInteger(ACCOUNT_LOGIN)) + ":" + _Symbol);
    string response = "";
 
    if(!HttpGet(url, response))

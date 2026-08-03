@@ -10,7 +10,7 @@ import { INSTRUMENTS, findInstrument } from "./market/catalog.js";
 import { getMarketCandles } from "./market/service.js";
 import { getStats, listTrades, recordSignalTrade, resetJournal, resolveOpenTrades } from "./journal/tradeJournal.js";
 import { executeSignalOrder, isAutoExecutionEnabled } from "./execution/executor.js";
-import { ackMt5Order, listAllMt5Orders, listPendingMt5Orders } from "./execution/mt5Bridge.js";
+import { ackMt5Order, claimPendingMt5Orders, listAllMt5Orders, listPendingMt5Orders } from "./execution/mt5Bridge.js";
 
 const app = express();
 const port = process.env.PORT ?? 4000;
@@ -243,7 +243,10 @@ app.get("/api/mt5/orders/pending", (req, res) => {
         });
     }
 
-    const orders = listPendingMt5Orders();
+    const maxRaw = Number(req.query.max ?? 5);
+    const max = Number.isFinite(maxRaw) ? Math.max(1, Math.min(20, Math.floor(maxRaw))) : 5;
+    const owner = String(req.query.mt5Owner ?? "mt5-ea");
+    const orders = claimPendingMt5Orders(max, owner);
 
     console.log("Orders:", JSON.stringify(orders, null, 2));
 
