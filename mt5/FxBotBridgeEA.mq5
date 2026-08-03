@@ -4,7 +4,7 @@
 
 #include <Trade/Trade.mqh>
 
-input string BridgeBaseUrl = "https://fxcrtsmcbot.com";
+input string BridgeBaseUrl = "https://fx-bot-api.onrender.com";
 input string SharedSecret = "2aHV4uomWzl/F9F2KGygTIBXRqGGA/LVeE6NWmfsDOE=";
 input int PollIntervalSec = 5;
 input int RequestTimeoutMs = 5000;

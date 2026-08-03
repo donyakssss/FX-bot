@@ -33,4 +33,4 @@ services:
     staticPublishPath: client/dist
     envVars:
       - key: VITE_API_URL
-        value: https://fxcrtsmcbot.com
+        value: https://fx-bot-api.onrender.com
