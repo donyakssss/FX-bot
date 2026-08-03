@@ -142,15 +142,14 @@ Body example:
    - `BROKER=paper` (safe test), `BROKER=binance` (crypto execution), or `BROKER=mt5` (MT5 bridge queue)
    - If using MT5 bridge, set `MT5_SHARED_SECRET` and send same value in MT5 EA `x-mt5-secret` header
    - Optional MT5 symbol normalization:
-     - `MT5_SYMBOL_PREFIX` (e.g. `m`)
-       - `MT5_SYMBOL_SUFFIX` (e.g. `z` for Exness symbols like `XAUUSDz`, `BTCUSDz`)
-     - `MT5_SYMBOL_MAP_JSON` (explicit overrides, example: `{"XAUUSD":"GOLD"}`)
+       - Leave `MT5_SYMBOL_PREFIX` and `MT5_SYMBOL_SUFFIX` empty for normal auto-detection
+       - Use `MT5_SYMBOL_MAP_JSON` only for special broker symbol overrides (example: `{"XAUUSD":"GOLD"}`)
 3. Restart backend server
 4. Verify with `GET /api/automation/status`
 
 ### MT5 EA integration flow
 1. EA polls `GET /api/mt5/orders/pending`
-2. EA places pending order in MT5 using received `brokerSymbol`, `entry`, `stopLoss`, `takeProfit`, `lotSize`
+2. EA auto-detects the broker symbol from Market Watch, then places the pending order using the resolved symbol, `entry`, `stopLoss`, `takeProfit`, `lotSize`
 3. EA confirms with `POST /api/mt5/orders/ack`
 
 ### Reliability safeguards now included

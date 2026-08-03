@@ -367,6 +367,53 @@ string UrlEncode(const string value)
    return encoded;
 }
 
+string NormalizeSymbolKey(const string symbol)
+{
+   string normalized = "";
+   for(int i = 0; i < StringLen(symbol); i++)
+   {
+      ushort ch = (ushort)StringGetCharacter(symbol, i);
+      if((ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9'))
+      {
+         string single = CharToString(ch);
+         normalized += StringToLower(single);
+      }
+   }
+
+   return normalized;
+}
+
+string ResolveBrokerSymbol(const string preferredSymbol, const string baseSymbol)
+{
+   string exact[] = {preferredSymbol, baseSymbol};
+   for(int i = 0; i < ArraySize(exact); i++)
+   {
+      string candidate = exact[i];
+      if(candidate == "")
+         continue;
+      if(SymbolSelect(candidate, true))
+         return candidate;
+   }
+
+   string requestedKey = NormalizeSymbolKey(baseSymbol);
+   int total = SymbolsTotal(true);
+   for(int i = 0; i < total; i++)
+   {
+      string marketSymbol = SymbolName(i, true);
+      if(marketSymbol == "")
+         continue;
+
+      string marketKey = NormalizeSymbolKey(marketSymbol);
+      if(StringFind(marketKey, requestedKey) >= 0 || StringFind(requestedKey, marketKey) >= 0)
+      {
+         if(SymbolSelect(marketSymbol, true))
+            return marketSymbol;
+      }
+   }
+
+   return baseSymbol;
+}
+
 string BuildMt5Url(const string path)
 {
    string url = gBridgeBaseUrl + path;
@@ -647,8 +694,12 @@ bool PlacePendingOrder(const string obj)
 
    if(!SymbolSelect(brokerSymbol, true))
    {
-      AckOrder(id, "REJECTED", "", "Symbol not available in Market Watch");
-      return false;
+      brokerSymbol = ResolveBrokerSymbol(brokerSymbol, symbol);
+      if(!SymbolSelect(brokerSymbol, true))
+      {
+         AckOrder(id, "REJECTED", "", "Symbol not available in Market Watch");
+         return false;
+      }
    }
 
    if(IsLocalPositionLimitReached(brokerSymbol))

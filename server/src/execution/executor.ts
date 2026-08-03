@@ -37,7 +37,12 @@ const mapSymbolForMt5 = (symbol: string): string => {
   if (mt5SymbolMap[symbol]) {
     return mt5SymbolMap[symbol];
   }
-  return `${mt5Prefix}${symbol}${mt5Suffix}`;
+
+  if (mt5Prefix.length > 0 || mt5Suffix.length > 0) {
+    return `${mt5Prefix}${symbol}${mt5Suffix}`;
+  }
+
+  return symbol;
 };
 
 const trailingByMode = (mode: SignalPayload["setup"]["appliedMode"]) => {
