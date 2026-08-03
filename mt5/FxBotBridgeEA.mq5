@@ -7,12 +7,13 @@
 input string BridgeBaseUrl = "https://fx-bot-api.onrender.com";
 input string SharedSecret = "2aHV4uomWzl/F9F2KGygTIBXRqGGA/LVeE6NWmfsDOE=";
 input int PollIntervalSec = 5;
-input int RequestTimeoutMs = 5000;
+input int RequestTimeoutMs = 15000;
 input bool RestrictToCurrentChartSymbol = false;
 input int MaxOrdersPerPoll = 5;
 input ulong MagicNumber = 20260714;
 
 CTrade trade;
+string gBridgeBaseUrl = "";
 
 string gTrailSymbols[];
 double gTrailEntry[];
@@ -126,10 +127,20 @@ void ApplyTrailingForAllPositions()
    }
 }
 
-string BuildHeaders()
+string NormalizeBaseUrl(const string url)
 {
-   string headers = "Content-Type: application/json\r\n";
-   headers += "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36\r\n";
+   string out = url;
+   while(StringLen(out) > 0 && StringGetCharacter(out, StringLen(out) - 1) == '/')
+      out = StringSubstr(out, 0, StringLen(out) - 1);
+   return out;
+}
+
+string BuildHeaders(const bool includeJsonContentType)
+{
+   string headers = "Accept: application/json\r\n";
+   if(includeJsonContentType)
+      headers += "Content-Type: application/json\r\n";
+
    if(StringLen(SharedSecret) > 0)
       headers += "x-mt5-secret: " + SharedSecret + "\r\n";
    return headers;
@@ -256,7 +267,7 @@ bool HttpGet(const string url, string &response)
    char data[];
    char result[];
    string resultHeaders = "";
-   string headers = BuildHeaders();
+   string headers = BuildHeaders(false);
 
    int code = WebRequest("GET", url, headers, RequestTimeoutMs, data, result, resultHeaders);
    if(code == -1)
@@ -268,6 +279,7 @@ bool HttpGet(const string url, string &response)
    response = CharArrayToString(result, 0, ArraySize(result));
    if(code < 200 || code >= 300)
    {
+      Print("WebRequest GET response headers: ", resultHeaders);
       Print("WebRequest GET non-2xx. Code=", code, " Body=", response);
       return false;
    }
@@ -282,7 +294,7 @@ bool HttpPost(const string url, const string body, string &response)
 
    char result[];
    string resultHeaders = "";
-   string headers = BuildHeaders();
+   string headers = BuildHeaders(true);
 
    int code = WebRequest("POST", url, headers, RequestTimeoutMs, data, result, resultHeaders);
    if(code == -1)
@@ -307,7 +319,7 @@ if(code < 200 || code >= 300)
 
 void AckOrder(const string id, const string status, const string ticket, const string note)
 {
-   string url = BridgeBaseUrl + "/api/mt5/orders/ack";
+   string url = gBridgeBaseUrl + "/api/mt5/orders/ack";
    string body = "{";
    body += "\"id\":\"" + JsonEscape(id) + "\",";
    body += "\"status\":\"" + JsonEscape(status) + "\",";
@@ -438,11 +450,19 @@ bool PlacePendingOrder(const string obj)
 
 void PollBridge()
 {
-   string url = BridgeBaseUrl + "/api/mt5/orders/pending";
+   string url = gBridgeBaseUrl + "/api/mt5/orders/pending";
    string response = "";
 
    if(!HttpGet(url, response))
+   {
+      string healthResponse = "";
+      string healthUrl = gBridgeBaseUrl + "/api/health";
+      if(!HttpGet(healthUrl, healthResponse))
+         Print("Bridge health check failed too. Verify URL allowlist and internet access. URL=", gBridgeBaseUrl);
+      else
+         Print("Bridge health endpoint is reachable: ", healthResponse);
       return;
+   }
 
    string orders[];
    if(!ParseOrders(response, orders))
@@ -458,11 +478,13 @@ void PollBridge()
 
 int OnInit()
 {
+   gBridgeBaseUrl = NormalizeBaseUrl(BridgeBaseUrl);
+
    trade.SetExpertMagicNumber(MagicNumber);
    trade.SetDeviationInPoints(20);
    EventSetTimer(PollIntervalSec);
    Print("FX Bot Bridge EA initialized. Poll interval=", PollIntervalSec, "s");
-   Print("Remember to allow WebRequest URL: ", BridgeBaseUrl);
+   Print("Remember to allow WebRequest URL: ", gBridgeBaseUrl);
    return(INIT_SUCCEEDED);
 }
 
