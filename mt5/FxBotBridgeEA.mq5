@@ -154,6 +154,34 @@ string JsonEscape(const string value)
    return v;
 }
 
+string UrlEncode(const string value)
+{
+   uchar bytes[];
+   StringToCharArray(value, bytes, 0, WHOLE_ARRAY, CP_UTF8);
+
+   string encoded = "";
+   int n = ArraySize(bytes);
+   for(int i = 0; i < n; i++)
+   {
+      int b = (int)bytes[i];
+      if(b == 0)
+         break;
+
+      bool safe =
+         (b >= 'a' && b <= 'z') ||
+         (b >= 'A' && b <= 'Z') ||
+         (b >= '0' && b <= '9') ||
+         b == '-' || b == '_' || b == '.' || b == '~';
+
+      if(safe)
+         encoded += CharToString((ushort)b);
+      else
+         encoded += "%" + StringFormat("%02X", b);
+   }
+
+   return encoded;
+}
+
 string ExtractJsonValue(const string obj, const string key)
 {
    string token = "\"" + key + "\":";
@@ -322,15 +350,13 @@ if(code < 200 || code >= 300)
 void AckOrder(const string id, const string status, const string ticket, const string note)
 {
    string url = gBridgeBaseUrl + "/api/mt5/orders/ack";
-   string body = "{";
-   body += "\"id\":\"" + JsonEscape(id) + "\",";
-   body += "\"status\":\"" + JsonEscape(status) + "\",";
-   body += "\"ticket\":\"" + JsonEscape(ticket) + "\",";
-   body += "\"note\":\"" + JsonEscape(note) + "\"";
-   body += "}";
+   url += "?id=" + UrlEncode(id);
+   url += "&status=" + UrlEncode(status);
+   url += "&ticket=" + UrlEncode(ticket);
+   url += "&note=" + UrlEncode(note);
 
    string response = "";
-   if(!HttpPost(url, body, response))
+   if(!HttpGet(url, response))
       Print("Ack failed for order id=", id, " status=", status);
 }
 
@@ -430,6 +456,16 @@ bool PlacePendingOrder(const string obj)
    bool sent = OrderSend(req, res);
    if(!sent || (res.retcode != TRADE_RETCODE_DONE && res.retcode != TRADE_RETCODE_PLACED))
    {
+      if(res.retcode == 10033)
+      {
+         Print("Pending order limit reached. Switching to market fallback for ", brokerSymbol);
+         if(ExecuteMarketFallback(brokerSymbol, orderType, lotSize, stopLoss, takeProfit, id))
+         {
+            AckOrder(id, "FILLED", IntegerToString((int)trade.ResultOrder()), "Market fallback after pending-order limit");
+            return true;
+         }
+      }
+
       string msg = "OrderSend failed. Retcode=" + IntegerToString((int)res.retcode);
       AckOrder(id, "REJECTED", "", msg);
       Print(msg, " symbol=", brokerSymbol, " type=", orderType);

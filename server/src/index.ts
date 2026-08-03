@@ -147,6 +147,28 @@ app.post("/api/mt5/orders/ack", (req, res) => {
   return res.json({ order: updated });
 });
 
+app.get("/api/mt5/orders/ack", (req, res) => {
+  if (!isMt5Authorized(req)) {
+    return res.status(401).json({ error: "Unauthorized MT5 bridge request." });
+  }
+
+  const id = String(req.query.id ?? "");
+  const status = String(req.query.status ?? "") as "FILLED" | "REJECTED";
+  const ticket = String(req.query.ticket ?? "");
+  const note = String(req.query.note ?? "");
+
+  if (!id || (status !== "FILLED" && status !== "REJECTED")) {
+    return res.status(400).json({ error: "Provide id and valid status for order acknowledgment." });
+  }
+
+  const updated = ackMt5Order(id, status, ticket || undefined, note || undefined);
+  if (!updated) {
+    return res.status(404).json({ error: "Order not found." });
+  }
+
+  return res.json({ order: updated });
+});
+
 app.get("/api/market/candles", async (req, res) => {
   const market = String(req.query.market ?? "") as MarketType;
   const symbol = String(req.query.symbol ?? "");
