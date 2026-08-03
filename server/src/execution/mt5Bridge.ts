@@ -53,9 +53,7 @@ const save = (orders: Mt5QueuedOrder[]): void => {
 export const enqueueMt5Order = (order: Mt5QueuedOrder): Mt5QueuedOrder => {
   const orders = load();
 
-  const duplicate = orders.find(
-    (item) => item.signalHash === order.signalHash && (item.status === "PENDING" || item.status === "FILLED")
-  );
+  const duplicate = orders.find((item) => item.signalHash === order.signalHash);
 
   if (duplicate) {
     return duplicate;

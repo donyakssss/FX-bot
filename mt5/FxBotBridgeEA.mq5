@@ -464,7 +464,8 @@ bool PlacePendingOrder(const string obj)
          return true;
       }
 
-      AckOrder(id, "REJECTED", "", "Market fallback failed after invalid pending entry");
+      string fallbackMsg = "Market fallback failed after invalid pending entry. Retcode=" + IntegerToString((int)trade.ResultRetcode());
+      AckOrder(id, "REJECTED", "", fallbackMsg);
       return false;
    }
 
