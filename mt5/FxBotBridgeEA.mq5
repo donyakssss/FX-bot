@@ -1,5 +1,5 @@
 #property strict
-#property version   "1.00"
+#property version   "1.01"
 #property description "FX Bot MT5 Bridge EA: polls pending orders from Node API and places MT5 pending orders."
 
 #include <Trade/Trade.mqh>
@@ -483,8 +483,16 @@ int OnInit()
    trade.SetExpertMagicNumber(MagicNumber);
    trade.SetDeviationInPoints(20);
    EventSetTimer(PollIntervalSec);
+   Print("FX Bot Bridge EA build=1.01");
    Print("FX Bot Bridge EA initialized. Poll interval=", PollIntervalSec, "s");
    Print("Remember to allow WebRequest URL: ", gBridgeBaseUrl);
+
+   string healthResponse = "";
+   if(HttpGet(gBridgeBaseUrl + "/api/health", healthResponse))
+      Print("Bridge health on init: ", healthResponse);
+   else
+      Print("Bridge health check on init failed. URL=", gBridgeBaseUrl + "/api/health");
+
    return(INIT_SUCCEEDED);
 }
 
