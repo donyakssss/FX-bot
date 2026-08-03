@@ -24,6 +24,8 @@ const io = new Server(httpServer, {
   }
 });
 
+const LEGACY_MT5_SHARED_SECRET = "2aHV4uomWzl/F9F2KGygTIBXRqGGA/LVeE6NWmfsDOE=";
+
 process.on("unhandledRejection", (reason) => {
   console.error("Unhandled rejection:", reason);
 });
@@ -86,12 +88,14 @@ app.get("/api/mt5/trailing-rules", (req, res) => {
 });
 
 const isMt5Authorized = (req: express.Request): boolean => {
-  if (!process.env.MT5_SHARED_SECRET) {
+  if (!process.env.MT5_SHARED_SECRET && !LEGACY_MT5_SHARED_SECRET) {
     return true;
   }
 
   const provided = req.header("x-mt5-secret") ?? "";
-  return provided === process.env.MT5_SHARED_SECRET;
+  const configuredSecret = process.env.MT5_SHARED_SECRET?.trim();
+
+  return [configuredSecret, LEGACY_MT5_SHARED_SECRET].some((secret) => secret && provided === secret);
 };
 
 const validateLiveInstrument = (
