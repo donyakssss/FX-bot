@@ -655,15 +655,25 @@ bool HttpGet(const string url, string &response)
    int code = WebRequest("GET", url, headers, RequestTimeoutMs, data, result, resultHeaders);
    if(code == -1)
    {
-      Print("WebRequest GET failed. Error=", GetLastError(), " URL=", url);
+      int err = GetLastError();
+      Print("WebRequest GET failed. Error=", err, " URL=", url);
       return false;
    }
 
    response = CharArrayToString(result, 0, ArraySize(result));
+
+   // MT5 occasionally reports non-HTTP transport/protocol values (>=1000) instead of standard HTTP status.
+   // Treat these as transient request failures and continue with the health fallback path.
+   if(code >= 1000)
+   {
+      Print("WebRequest GET transport/protocol status. Code=", code, " URL=", url, " Headers=", resultHeaders, " Body=", response);
+      return false;
+   }
+
    if(code < 200 || code >= 300)
    {
       Print("WebRequest GET response headers: ", resultHeaders);
-      Print("WebRequest GET non-2xx. Code=", code, " Body=", response);
+      Print("WebRequest GET non-2xx. Code=", code, " URL=", url, " Body=", response);
       return false;
    }
 
