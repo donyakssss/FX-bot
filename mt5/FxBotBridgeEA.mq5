@@ -255,18 +255,68 @@ bool ParseOrders(const string response, string &orderObjects[])
    return true;
 }
 
+double NormalizePrice(const string symbol, const double price)
+{
+   int digits = (int)SymbolInfoInteger(symbol, SYMBOL_DIGITS);
+   return NormalizeDouble(price, digits);
+}
+
+double MinStopDistance(const string symbol)
+{
+   double point = SymbolInfoDouble(symbol, SYMBOL_POINT);
+   int stopsLevel = (int)SymbolInfoInteger(symbol, SYMBOL_TRADE_STOPS_LEVEL);
+   return MathMax(point * stopsLevel, point * 10.0);
+}
+
+void EnsureStopsForOrder(
+   const string symbol,
+   const bool isBuy,
+   const double referencePrice,
+   double &stopLoss,
+   double &takeProfit
+)
+{
+   double minDistance = MinStopDistance(symbol);
+
+   if(isBuy)
+   {
+      if(stopLoss <= 0.0 || stopLoss >= (referencePrice - minDistance))
+         stopLoss = referencePrice - (minDistance * 1.5);
+
+      if(takeProfit <= 0.0 || takeProfit <= (referencePrice + minDistance))
+         takeProfit = referencePrice + (minDistance * 2.0);
+   }
+   else
+   {
+      if(stopLoss <= 0.0 || stopLoss <= (referencePrice + minDistance))
+         stopLoss = referencePrice + (minDistance * 1.5);
+
+      if(takeProfit <= 0.0 || takeProfit >= (referencePrice - minDistance))
+         takeProfit = referencePrice - (minDistance * 2.0);
+   }
+
+   stopLoss = NormalizePrice(symbol, stopLoss);
+   takeProfit = NormalizePrice(symbol, takeProfit);
+}
+
 bool ExecuteMarketFallback(const string brokerSymbol, const string orderType, const double lotSize, const double stopLoss, const double takeProfit, const string id)
 {
    string comment = "FXB:" + StringSubstr(id, 0, 8) + ":MKT";
    bool ok = false;
+   bool isBuy = (orderType == "BUY_LIMIT");
+   double marketPrice = isBuy ? SymbolInfoDouble(brokerSymbol, SYMBOL_ASK) : SymbolInfoDouble(brokerSymbol, SYMBOL_BID);
+   double adjustedSl = stopLoss;
+   double adjustedTp = takeProfit;
+
+   EnsureStopsForOrder(brokerSymbol, isBuy, marketPrice, adjustedSl, adjustedTp);
 
    if(orderType == "BUY_LIMIT")
    {
-      ok = trade.Buy(lotSize, brokerSymbol, 0.0, stopLoss, takeProfit, comment);
+      ok = trade.Buy(lotSize, brokerSymbol, 0.0, adjustedSl, adjustedTp, comment);
    }
    else if(orderType == "SELL_LIMIT")
    {
-      ok = trade.Sell(lotSize, brokerSymbol, 0.0, stopLoss, takeProfit, comment);
+      ok = trade.Sell(lotSize, brokerSymbol, 0.0, adjustedSl, adjustedTp, comment);
    }
 
    if(!ok)
@@ -363,6 +413,8 @@ bool PlacePendingOrder(const string obj)
    double breakEvenR = StringToDouble(ExtractJsonValue(obj, "breakEvenR"));
    double trailStartR = StringToDouble(ExtractJsonValue(obj, "trailStartR"));
    double trailStepR = StringToDouble(ExtractJsonValue(obj, "trailStepR"));
+   double adjustedStopLoss = stopLoss;
+   double adjustedTakeProfit = takeProfit;
 
    if(brokerSymbol == "")
       brokerSymbol = symbol;
@@ -395,10 +447,12 @@ bool PlacePendingOrder(const string obj)
    if(orderType == "BUY_LIMIT")
    {
       validPending = entry < (ask - minDistance);
+      EnsureStopsForOrder(brokerSymbol, true, entry, adjustedStopLoss, adjustedTakeProfit);
    }
    else if(orderType == "SELL_LIMIT")
    {
       validPending = entry > (bid + minDistance);
+      EnsureStopsForOrder(brokerSymbol, false, entry, adjustedStopLoss, adjustedTakeProfit);
    }
 
    if(!validPending)
@@ -438,8 +492,8 @@ bool PlacePendingOrder(const string obj)
    }
 
    req.price = NormalizeDouble(entry, (int)SymbolInfoInteger(brokerSymbol, SYMBOL_DIGITS));
-   req.sl = stopLoss;
-   req.tp = takeProfit;
+   req.sl = adjustedStopLoss;
+   req.tp = adjustedTakeProfit;
    req.comment = "FXB:" + StringSubstr(id, 0, 8);
 
    bool sent = OrderSend(req, res);
