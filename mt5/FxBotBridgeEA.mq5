@@ -19,6 +19,8 @@ input double PartialClosePercent = 50.0;
 input bool EnforceLocalPositionLimits = true;
 input int MaxOpenPositionsByMagic = 3;
 input int MaxOpenPositionsPerSymbol = 1;
+input int MaxPendingOrdersByMagic = 5;
+input int MaxPendingOrdersPerSymbol = 2;
 
 CTrade trade;
 string gBridgeBaseUrl = "";
@@ -146,6 +148,47 @@ int CountOpenPositionsByMagic()
    return count;
 }
 
+int CountPendingOrdersByMagicAndSymbol(const string symbol)
+{
+   int count = 0;
+   for(int i = OrdersTotal() - 1; i >= 0; i--)
+   {
+      ulong ticket = OrderGetTicket(i);
+      if(ticket == 0)
+         continue;
+
+      if(!OrderSelect(ticket))
+         continue;
+
+      if((ulong)OrderGetInteger(ORDER_MAGIC) != MagicNumber)
+         continue;
+
+      if(OrderGetString(ORDER_SYMBOL) == symbol)
+         count++;
+   }
+
+   return count;
+}
+
+int CountPendingOrdersByMagic()
+{
+   int count = 0;
+   for(int i = OrdersTotal() - 1; i >= 0; i--)
+   {
+      ulong ticket = OrderGetTicket(i);
+      if(ticket == 0)
+         continue;
+
+      if(!OrderSelect(ticket))
+         continue;
+
+      if((ulong)OrderGetInteger(ORDER_MAGIC) == MagicNumber)
+         count++;
+   }
+
+   return count;
+}
+
 bool IsLocalPositionLimitReached(const string symbol)
 {
    if(!EnforceLocalPositionLimits)
@@ -155,6 +198,12 @@ bool IsLocalPositionLimitReached(const string symbol)
       return true;
 
    if(MaxOpenPositionsPerSymbol > 0 && CountOpenPositionsByMagicAndSymbol(symbol) >= MaxOpenPositionsPerSymbol)
+      return true;
+
+   if(MaxPendingOrdersByMagic > 0 && CountPendingOrdersByMagic() >= MaxPendingOrdersByMagic)
+      return true;
+
+   if(MaxPendingOrdersPerSymbol > 0 && CountPendingOrdersByMagicAndSymbol(symbol) >= MaxPendingOrdersPerSymbol)
       return true;
 
    return false;
@@ -663,9 +712,9 @@ bool PlacePendingOrder(const string obj)
    bool sent = OrderSend(req, res);
    if(!sent || (res.retcode != TRADE_RETCODE_DONE && res.retcode != TRADE_RETCODE_PLACED))
    {
-      if(res.retcode == 10033)
+      if(res.retcode == 10033 || res.retcode == 10040)
       {
-         Print("Pending order limit reached. Switching to market fallback for ", brokerSymbol);
+         Print("Pending order rejected by broker limit. Switching to market fallback for ", brokerSymbol, " retcode=", (int)res.retcode);
          if(ExecuteMarketFallback(brokerSymbol, orderType, lotSize, stopLoss, takeProfit, id))
          {
             AckOrder(id, "FILLED", IntegerToString((int)trade.ResultOrder()), "Market fallback after pending-order limit");
