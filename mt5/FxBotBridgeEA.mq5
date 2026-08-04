@@ -1,5 +1,5 @@
 #property strict
-#property version   "1.10"
+#property version   "1.11"
 #property description "FX Bot MT5 Bridge EA: polls pending orders from Node API and places MT5 pending orders."
 
 #include <Trade/Trade.mqh>
@@ -529,6 +529,10 @@ string ResolveBrokerSymbol(const string preferredSymbol, const string baseSymbol
       string candidate = exact[i];
       if(candidate == "")
          continue;
+
+      if(!IsSymbolCompatible(baseSymbol, candidate))
+         continue;
+
       string sideReason = "";
       if(SymbolSelect(candidate, true) && IsSymbolTradableForSide(candidate, isBuy, sideReason))
          return candidate;
@@ -545,6 +549,9 @@ string ResolveBrokerSymbol(const string preferredSymbol, const string baseSymbol
       string marketKey = NormalizeSymbolKey(marketSymbol);
       if(StringFind(marketKey, requestedKey) >= 0 || StringFind(requestedKey, marketKey) >= 0)
       {
+         if(!IsSymbolCompatible(baseSymbol, marketSymbol))
+            continue;
+
          string sideReason = "";
          if(SymbolSelect(marketSymbol, true) && IsSymbolTradableForSide(marketSymbol, isBuy, sideReason))
             return marketSymbol;
@@ -1118,7 +1125,7 @@ int OnInit()
    trade.SetExpertMagicNumber(MagicNumber);
    trade.SetDeviationInPoints(20);
    EventSetTimer(PollIntervalSec);
-   Print("FX Bot Bridge EA build=1.10");
+   Print("FX Bot Bridge EA build=1.11");
    Print("FX Bot Bridge EA initialized. Poll interval=", PollIntervalSec, "s");
    Print("Remember to allow WebRequest URL: ", gBridgeBaseUrl);
 
