@@ -140,6 +140,7 @@ Body example:
 2. Set:
    - `ENABLE_AUTO_EXECUTION=true`
    - `BROKER=paper` (safe test), `BROKER=binance` (crypto execution), or `BROKER=mt5` (MT5 bridge queue)
+   - `MT5_ENTRY_MODE=auto` (`market` for instant entries, `limit` for limit-only, `auto` for smart fallback)
    - If using MT5 bridge, set `MT5_SHARED_SECRET` and send same value in MT5 EA `x-mt5-secret` header
    - Optional MT5 symbol normalization:
        - Leave `MT5_SYMBOL_PREFIX` and `MT5_SYMBOL_SUFFIX` empty for normal auto-detection
@@ -159,7 +160,7 @@ If you want background auto-trading across all supported instruments (not just o
 
 ### MT5 EA integration flow
 1. EA polls `GET /api/mt5/orders/pending`
-2. EA auto-detects the broker symbol from Market Watch, then places the pending order using the resolved symbol, `entry`, `stopLoss`, `takeProfit`, `lotSize`
+2. EA auto-detects the broker symbol from Market Watch, then places either market or pending orders (based on queued `orderType`) using resolved symbol, `entry`, `stopLoss`, `takeProfit`, `lotSize`
 3. EA confirms with `POST /api/mt5/orders/ack`
 
 ### Reliability safeguards now included

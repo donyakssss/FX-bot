@@ -76,6 +76,8 @@ export async function analyzeLive(payload: {
   symbol: string;
   timeframe: Timeframe;
   tradeMode: TradeMode;
+  executeNow?: boolean;
+  entryMode?: "auto" | "limit" | "market";
   risk: { accountBalance: number; riskPercent: number };
 }): Promise<LiveUpdate> {
   const response = await fetch(`${API_BASE}/api/analyze-live`, {

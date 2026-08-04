@@ -16,6 +16,8 @@ input double RiskPercentPerTrade = 1.0;
 input bool EnablePartialClose = true;
 input double PartialCloseAtR = 1.0;
 input double PartialClosePercent = 50.0;
+input bool EnableThreatExit = true;
+input double ThreatExitR = -0.75;
 input bool EnforceLocalPositionLimits = true;
 input int MaxOpenPositionsByMagic = 3;
 input int MaxOpenPositionsPerSymbol = 1;
@@ -411,6 +413,17 @@ void ApplyTrailingForAllPositions()
          }
       }
 
+      if(EnableThreatExit && ThreatExitR < 0.0 && rNow <= ThreatExitR)
+      {
+         if(trade.PositionClose(ticket))
+         {
+            Print("Threat exit executed before full SL. Symbol=", symbol, " RNow=", rNow, " Threshold=", ThreatExitR);
+            continue;
+         }
+
+         Print("Threat exit failed. Symbol=", symbol, " Retcode=", trade.ResultRetcode());
+      }
+
       if(newSl > 0.0)
       {
          newSl = NormalizeDouble(newSl, digits);
@@ -677,7 +690,7 @@ bool ExecuteMarketFallback(const string brokerSymbol, const string orderType, co
 
    string comment = "FXB:" + StringSubstr(id, 0, 8) + ":MKT";
    bool ok = false;
-   bool isBuy = (orderType == "BUY_LIMIT");
+   bool isBuy = (orderType == "BUY_LIMIT" || orderType == "BUY_MARKET");
    double bid = SymbolInfoDouble(brokerSymbol, SYMBOL_BID);
    double ask = SymbolInfoDouble(brokerSymbol, SYMBOL_ASK);
    double marketPrice = isBuy ? ask : bid;
@@ -690,11 +703,11 @@ bool ExecuteMarketFallback(const string brokerSymbol, const string orderType, co
 
    Print("Market fallback normalized stops. Symbol=", brokerSymbol, " Side=", (isBuy ? "BUY" : "SELL"), " Bid=", bid, " Ask=", ask, " SL=", adjustedSl, " TP=", adjustedTp, " Volume=", tradeVolume);
 
-   if(orderType == "BUY_LIMIT")
+   if(isBuy)
    {
       ok = trade.Buy(tradeVolume, brokerSymbol, 0.0, adjustedSl, adjustedTp, comment);
    }
-   else if(orderType == "SELL_LIMIT")
+   else
    {
       ok = trade.Sell(tradeVolume, brokerSymbol, 0.0, adjustedSl, adjustedTp, comment);
    }
@@ -822,7 +835,19 @@ bool PlacePendingOrder(const string obj)
       return false;
    }
 
-   bool isBuyOrder = (orderType == "BUY_LIMIT");
+   bool isBuyOrder = (orderType == "BUY_LIMIT" || orderType == "BUY_MARKET");
+   bool isMarketOrder = (orderType == "BUY_MARKET" || orderType == "SELL_MARKET");
+
+   if(
+      orderType != "BUY_LIMIT" &&
+      orderType != "SELL_LIMIT" &&
+      orderType != "BUY_MARKET" &&
+      orderType != "SELL_MARKET"
+   )
+   {
+      AckOrder(id, "REJECTED", "", "Unsupported orderType");
+      return false;
+   }
 
    if(!IsSymbolCompatible(symbol, brokerSymbol))
    {
@@ -879,6 +904,28 @@ bool PlacePendingOrder(const string obj)
       return false;
    }
 
+   if(isMarketOrder)
+   {
+      if(ExecuteMarketFallback(brokerSymbol, orderType, lotSize, stopLoss, takeProfit, id))
+      {
+         if(breakEvenR <= 0.0)
+            breakEvenR = 1.0;
+         if(trailStartR <= 0.0)
+            trailStartR = 1.6;
+         if(trailStepR <= 0.0)
+            trailStepR = 0.8;
+
+         double marketEntry = isBuyOrder ? SymbolInfoDouble(brokerSymbol, SYMBOL_ASK) : SymbolInfoDouble(brokerSymbol, SYMBOL_BID);
+         UpsertTrailContext(brokerSymbol, marketEntry, stopLoss, breakEvenR, trailStartR, trailStepR);
+         AckOrder(id, "FILLED", IntegerToString((int)trade.ResultOrder()), "Market order executed");
+         return true;
+      }
+
+      string marketMsg = "Market order failed. Retcode=" + IntegerToString((int)trade.ResultRetcode());
+      AckOrder(id, "REJECTED", "", marketMsg);
+      return false;
+   }
+
    double bid = SymbolInfoDouble(brokerSymbol, SYMBOL_BID);
    double ask = SymbolInfoDouble(brokerSymbol, SYMBOL_ASK);
    double point = SymbolInfoDouble(brokerSymbol, SYMBOL_POINT);
@@ -930,11 +977,6 @@ bool PlacePendingOrder(const string obj)
       req.type = ORDER_TYPE_BUY_LIMIT;
    else if(orderType == "SELL_LIMIT")
       req.type = ORDER_TYPE_SELL_LIMIT;
-   else
-   {
-      AckOrder(id, "REJECTED", "", "Unsupported orderType");
-      return false;
-   }
 
    req.price = NormalizeDouble(entry, (int)SymbolInfoInteger(brokerSymbol, SYMBOL_DIGITS));
    req.sl = adjustedStopLoss;

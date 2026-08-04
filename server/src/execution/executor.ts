@@ -11,8 +11,27 @@ type ExecutionResult = {
   message: string;
 };
 
+type Mt5OrderType = "BUY_LIMIT" | "SELL_LIMIT" | "BUY_MARKET" | "SELL_MARKET";
+type Mt5EntryMode = "auto" | "limit" | "market";
+type ExecuteSignalOptions = {
+  entryMode?: Mt5EntryMode;
+};
+
 const broker = (process.env.BROKER ?? "paper") as BrokerType;
 const autoEnabled = process.env.ENABLE_AUTO_EXECUTION === "true";
+const mt5EntryMode = (process.env.MT5_ENTRY_MODE ?? "auto").toLowerCase();
+
+const resolveEntryMode = (override?: Mt5EntryMode): Mt5EntryMode => {
+  if (override) {
+    return override;
+  }
+
+  if (mt5EntryMode === "limit" || mt5EntryMode === "market") {
+    return mt5EntryMode;
+  }
+
+  return "auto";
+};
 
 const mt5Prefix = process.env.MT5_SYMBOL_PREFIX ?? "";
 const mt5Suffix = process.env.MT5_SYMBOL_SUFFIX ?? "";
@@ -68,7 +87,7 @@ const trailingByMode = (mode: SignalPayload["setup"]["appliedMode"]) => {
   return { breakEvenR: 1.2, trailStartR: 1.8, trailStepR: 1.0 };
 };
 
-const signalHash = (payload: SignalPayload, orderType: "BUY_LIMIT" | "SELL_LIMIT", entry: number): string => {
+const signalHash = (payload: SignalPayload, orderType: Mt5OrderType, entry: number): string => {
   const basis = [
     payload.snapshot.market,
     payload.snapshot.symbol,
@@ -125,7 +144,7 @@ const executeBinance = async (payload: SignalPayload): Promise<ExecutionResult> 
   };
 };
 
-const executeMt5 = async (payload: SignalPayload): Promise<ExecutionResult> => {
+const executeMt5 = async (payload: SignalPayload, entryMode: Mt5EntryMode): Promise<ExecutionResult> => {
   if (
     payload.snapshot.market !== "forex" &&
     payload.snapshot.market !== "metals" &&
@@ -140,7 +159,11 @@ const executeMt5 = async (payload: SignalPayload): Promise<ExecutionResult> => {
   }
 
   const primaryLimit = payload.setup.futureEntries[0];
-  if (!primaryLimit) {
+  const useMarketEntry =
+    entryMode === "market" ||
+    (entryMode === "auto" && !primaryLimit);
+
+  if (!useMarketEntry && !primaryLimit) {
     return {
       executed: false,
       broker: "mt5",
@@ -148,9 +171,19 @@ const executeMt5 = async (payload: SignalPayload): Promise<ExecutionResult> => {
     };
   }
 
+  const orderType: Mt5OrderType = useMarketEntry
+    ? payload.setup.direction === "BUY"
+      ? "BUY_MARKET"
+      : "SELL_MARKET"
+    : primaryLimit!.orderType;
+
+  const entryPrice = useMarketEntry ? payload.setup.entry : primaryLimit!.entry;
+  const stopLoss = useMarketEntry ? payload.setup.stopLoss : primaryLimit!.stopLoss;
+  const takeProfit = useMarketEntry ? payload.setup.takeProfit : primaryLimit!.takeProfit;
+
   const brokerSymbol = mapSymbolForMt5(payload.snapshot.symbol);
   const trailing = trailingByMode(payload.setup.appliedMode);
-  const hash = signalHash(payload, primaryLimit.orderType, primaryLimit.entry);
+  const hash = signalHash(payload, orderType, entryPrice);
 
  const orderId = crypto.randomUUID();
 
@@ -161,10 +194,10 @@ const order: Mt5QueuedOrder = {
   brokerSymbol,
   tradeMode: payload.setup.appliedMode,
   direction: (payload.setup.direction === "BUY" ? "BUY" : "SELL") as "BUY" | "SELL",
-  orderType: primaryLimit.orderType,
-  entry: primaryLimit.entry,
-  stopLoss: primaryLimit.stopLoss,
-  takeProfit: primaryLimit.takeProfit,
+  orderType,
+  entry: entryPrice,
+  stopLoss,
+  takeProfit,
   lotSize: Math.max(0.01, Number(payload.risk.lotSize.toFixed(2))),
   trailing,
   createdAt: new Date().toISOString(),
@@ -188,12 +221,15 @@ console.log("======================================");
     broker: "mt5",
     message:
       queued.id === orderId
-        ? `MT5 order queued for ${payload.snapshot.symbol} -> ${brokerSymbol} (${primaryLimit.orderType})`
+        ? `MT5 order queued for ${payload.snapshot.symbol} -> ${brokerSymbol} (${orderType})`
         : `MT5 duplicate prevented for ${payload.snapshot.symbol}`
   };
 };
 
-export const executeSignalOrder = async (payload: SignalPayload): Promise<ExecutionResult> => {
+export const executeSignalOrder = async (
+  payload: SignalPayload,
+  options?: ExecuteSignalOptions
+): Promise<ExecutionResult> => {
     console.log("ENTERED executeSignalOrder");
     console.log("Broker =", broker);
     console.log("Auto =", autoEnabled);
@@ -218,7 +254,7 @@ console.log("Broker:", broker);
 
     if (broker === "mt5") {
         console.log("Executing MT5");
-        return executeMt5(payload);
+      return executeMt5(payload, resolveEntryMode(options?.entryMode));
     }
 
     console.log("Executing Paper");
