@@ -881,13 +881,16 @@ bool PlacePendingOrder(const string obj)
       }
    }
 
-   string priceReason = "";
-   if(!IsOrderPriceSaneForSymbol(brokerSymbol, entry, priceReason))
+   if(!isMarketOrder)
    {
-      string msg = priceReason + ". Base=" + symbol + " Broker=" + brokerSymbol + " Entry=" + DoubleToString(entry, 6);
-      AckOrder(id, "REJECTED", "", msg);
-      Print("Order blocked by price sanity check. ", msg);
-      return false;
+      string priceReason = "";
+      if(!IsOrderPriceSaneForSymbol(brokerSymbol, entry, priceReason))
+      {
+         string msg = priceReason + ". Base=" + symbol + " Broker=" + brokerSymbol + " Entry=" + DoubleToString(entry, 6);
+         AckOrder(id, "REJECTED", "", msg);
+         Print("Order blocked by price sanity check. ", msg);
+         return false;
+      }
    }
 
    if(IsLocalPositionLimitReached(brokerSymbol))
