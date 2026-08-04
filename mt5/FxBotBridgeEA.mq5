@@ -1,5 +1,5 @@
 #property strict
-#property version   "1.03"
+#property version   "1.04"
 #property description "FX Bot MT5 Bridge EA: polls pending orders from Node API and places MT5 pending orders."
 
 #include <Trade/Trade.mqh>
@@ -652,6 +652,19 @@ void EnsureStopsForOrder(
 {
    double minDistance = MinStopDistance(symbol);
 
+   // Reset obviously wrong-scale prices (e.g., forex-scale TP on crypto symbols).
+   if(referencePrice > 0.0)
+   {
+      double minScale = referencePrice * 0.2;
+      double maxScale = referencePrice * 5.0;
+
+      if(stopLoss > 0.0 && (stopLoss < minScale || stopLoss > maxScale))
+         stopLoss = 0.0;
+
+      if(takeProfit > 0.0 && (takeProfit < minScale || takeProfit > maxScale))
+         takeProfit = 0.0;
+   }
+
    if(isBuy)
    {
       if(stopLoss <= 0.0 || stopLoss >= (referencePrice - minDistance))
@@ -1068,7 +1081,7 @@ int OnInit()
    trade.SetExpertMagicNumber(MagicNumber);
    trade.SetDeviationInPoints(20);
    EventSetTimer(PollIntervalSec);
-   Print("FX Bot Bridge EA build=1.03");
+   Print("FX Bot Bridge EA build=1.04");
    Print("FX Bot Bridge EA initialized. Poll interval=", PollIntervalSec, "s");
    Print("Remember to allow WebRequest URL: ", gBridgeBaseUrl);
 
