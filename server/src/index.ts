@@ -67,12 +67,19 @@ app.post("/api/journal/reset", (_req, res) => {
 });
 
 app.get("/api/automation/status", (_req, res) => {
+  const targets = readBackgroundTargets();
   res.json({
     enabled: isAutoExecutionEnabled(),
     broker: process.env.BROKER ?? "paper",
     mt5PendingOrders: listPendingMt5Orders().length,
     mt5SymbolPrefix: process.env.MT5_SYMBOL_PREFIX ?? "",
-    mt5SymbolSuffix: process.env.MT5_SYMBOL_SUFFIX ?? ""
+    mt5SymbolSuffix: process.env.MT5_SYMBOL_SUFFIX ?? "",
+    backgroundTargets: targets.map((target) => ({
+      market: target.market,
+      symbol: target.symbol,
+      timeframe: target.timeframe,
+      tradeMode: target.tradeMode
+    }))
   });
 });
 
@@ -131,6 +138,31 @@ const readBackgroundTargets = (): BackgroundTarget[] => {
       }
     } catch (error) {
       console.error("Invalid BACKGROUND_TARGETS_JSON:", (error as Error).message);
+    }
+  }
+
+  const symbolsRaw = process.env.BACKGROUND_SYMBOLS;
+  if (symbolsRaw) {
+    const market = (process.env.BACKGROUND_MARKET ?? "forex") as MarketType;
+    const timeframe = (process.env.BACKGROUND_TIMEFRAME ?? "M15") as Timeframe;
+    const tradeMode = (process.env.BACKGROUND_TRADE_MODE ?? "day") as "scalp" | "day" | "swing" | "position";
+    const accountBalance = Number(process.env.BACKGROUND_ACCOUNT_BALANCE ?? 5000);
+    const riskPercent = Number(process.env.BACKGROUND_RISK_PERCENT ?? 1);
+
+    const symbols = symbolsRaw
+      .split(",")
+      .map((symbol) => symbol.trim())
+      .filter((symbol) => symbol.length > 0);
+
+    if (symbols.length > 0) {
+      return symbols.map((symbol) => ({
+        market,
+        symbol,
+        timeframe,
+        tradeMode,
+        accountBalance,
+        riskPercent
+      }));
     }
   }
 
