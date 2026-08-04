@@ -320,6 +320,29 @@ app.get("/api/mt5/orders/pending", (req, res) => {
     });
 });
 
+app.get("/api/mt5/orders/all", (req, res) => {
+  if (!isMt5Authorized(req)) {
+    return res.status(401).json({ error: "Unauthorized MT5 bridge request." });
+  }
+
+  const limitRaw = Number(req.query.limit ?? 200);
+  const limit = Number.isFinite(limitRaw) ? Math.max(1, Math.min(1000, Math.floor(limitRaw))) : 200;
+
+  const orders = listAllMt5Orders()
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    .slice(0, limit);
+
+  const summary = {
+    total: orders.length,
+    pending: orders.filter((o) => o.status === "PENDING").length,
+    processing: orders.filter((o) => o.status === "PROCESSING").length,
+    filled: orders.filter((o) => o.status === "FILLED").length,
+    rejected: orders.filter((o) => o.status === "REJECTED").length
+  };
+
+  return res.json({ summary, orders });
+});
+
 app.post("/api/mt5/orders/ack", (req, res) => {
   if (!isMt5Authorized(req)) {
     return res.status(401).json({ error: "Unauthorized MT5 bridge request." });
