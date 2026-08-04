@@ -128,7 +128,23 @@ type BackgroundTarget = {
   riskPercent: number;
 };
 
+const isMarketType = (value: string): value is MarketType =>
+  value === "forex" || value === "crypto" || value === "indices" || value === "metals" || value === "synthetics";
+
+const mt5BackgroundMarkets: MarketType[] = ["forex", "crypto", "indices", "metals"];
+
+const parseCsv = (raw?: string): string[] =>
+  (raw ?? "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0);
+
 const readBackgroundTargets = (): BackgroundTarget[] => {
+  const timeframe = (process.env.BACKGROUND_TIMEFRAME ?? "M15") as Timeframe;
+  const tradeMode = (process.env.BACKGROUND_TRADE_MODE ?? "day") as "scalp" | "day" | "swing" | "position";
+  const accountBalance = Number(process.env.BACKGROUND_ACCOUNT_BALANCE ?? 5000);
+  const riskPercent = Number(process.env.BACKGROUND_RISK_PERCENT ?? 1);
+
   const fromJson = process.env.BACKGROUND_TARGETS_JSON;
   if (fromJson) {
     try {
@@ -141,18 +157,35 @@ const readBackgroundTargets = (): BackgroundTarget[] => {
     }
   }
 
+  if (process.env.BACKGROUND_ALL_SYMBOLS === "true") {
+    const requestedMarkets = parseCsv(process.env.BACKGROUND_MARKETS)
+      .map((value) => value.toLowerCase())
+      .filter(isMarketType);
+
+    const selectedMarkets = requestedMarkets.length > 0 ? requestedMarkets : mt5BackgroundMarkets;
+    const marketSet = new Set<MarketType>(selectedMarkets);
+
+    const allTargets = INSTRUMENTS
+      .filter((instrument) => marketSet.has(instrument.market))
+      .map((instrument) => ({
+        market: instrument.market,
+        symbol: instrument.symbol,
+        timeframe,
+        tradeMode,
+        accountBalance,
+        riskPercent
+      }));
+
+    if (allTargets.length > 0) {
+      return allTargets;
+    }
+  }
+
   const symbolsRaw = process.env.BACKGROUND_SYMBOLS;
   if (symbolsRaw) {
     const market = (process.env.BACKGROUND_MARKET ?? "forex") as MarketType;
-    const timeframe = (process.env.BACKGROUND_TIMEFRAME ?? "M15") as Timeframe;
-    const tradeMode = (process.env.BACKGROUND_TRADE_MODE ?? "day") as "scalp" | "day" | "swing" | "position";
-    const accountBalance = Number(process.env.BACKGROUND_ACCOUNT_BALANCE ?? 5000);
-    const riskPercent = Number(process.env.BACKGROUND_RISK_PERCENT ?? 1);
 
-    const symbols = symbolsRaw
-      .split(",")
-      .map((symbol) => symbol.trim())
-      .filter((symbol) => symbol.length > 0);
+    const symbols = parseCsv(symbolsRaw);
 
     if (symbols.length > 0) {
       return symbols.map((symbol) => ({
@@ -170,10 +203,10 @@ const readBackgroundTargets = (): BackgroundTarget[] => {
     {
       market: (process.env.BACKGROUND_MARKET ?? "forex") as MarketType,
       symbol: process.env.BACKGROUND_SYMBOL ?? "EURUSD",
-      timeframe: (process.env.BACKGROUND_TIMEFRAME ?? "M15") as Timeframe,
-      tradeMode: (process.env.BACKGROUND_TRADE_MODE ?? "day") as "scalp" | "day" | "swing" | "position",
-      accountBalance: Number(process.env.BACKGROUND_ACCOUNT_BALANCE ?? 5000),
-      riskPercent: Number(process.env.BACKGROUND_RISK_PERCENT ?? 1)
+      timeframe,
+      tradeMode,
+      accountBalance,
+      riskPercent
     }
   ];
 };

@@ -147,6 +147,16 @@ Body example:
 3. Restart backend server
 4. Verify with `GET /api/automation/status`
 
+### Trade all supported symbols automatically
+If you want background auto-trading across all supported instruments (not just one pair), set:
+- `BACKGROUND_AUTOTRADE_ENABLED=true`
+- `BACKGROUND_ALL_SYMBOLS=true`
+- `BACKGROUND_MARKETS=forex,crypto,indices,metals` (optional; defaults to these when BROKER=mt5)
+- `BACKGROUND_TIMEFRAME=M15`
+- `BACKGROUND_TRADE_MODE=day`
+
+`BACKGROUND_ALL_SYMBOLS=true` takes priority over `BACKGROUND_SYMBOL` and `BACKGROUND_SYMBOLS`.
+
 ### MT5 EA integration flow
 1. EA polls `GET /api/mt5/orders/pending`
 2. EA auto-detects the broker symbol from Market Watch, then places the pending order using the resolved symbol, `entry`, `stopLoss`, `takeProfit`, `lotSize`
