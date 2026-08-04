@@ -36,6 +36,7 @@ double gTrailBreakEvenR[];
 double gTrailStartR[];
 double gTrailStepR[];
 bool gPartialTaken[];
+datetime gTrailRetryAfter[];
 
 bool AcquireInstanceLock()
 {
@@ -88,7 +89,9 @@ void UpsertTrailContext(const string symbol, const double entry, const double in
       ArrayResize(gTrailStartR, n + 1);
       ArrayResize(gTrailStepR, n + 1);
       ArrayResize(gPartialTaken, n + 1);
+      ArrayResize(gTrailRetryAfter, n + 1);
       idx = n;
+      gTrailRetryAfter[idx] = (datetime)0;
    }
 
    gTrailSymbols[idx] = symbol;
@@ -380,6 +383,10 @@ void ApplyTrailingForAllPositions()
       if(idx < 0)
          continue;
 
+      datetime nowTs = TimeCurrent();
+      if(idx < ArraySize(gTrailRetryAfter) && gTrailRetryAfter[idx] > nowTs)
+         continue;
+
       double entry = gTrailEntry[idx];
       double initialSl = gTrailInitialSl[idx];
       double risk = MathAbs(entry - initialSl);
@@ -478,7 +485,18 @@ void ApplyTrailingForAllPositions()
          {
             int ret = (int)trade.ResultRetcode();
             if(ret != TRADE_RETCODE_NO_CHANGES)
+            {
+               int barSeconds = PeriodSeconds(_Period);
+               if(barSeconds <= 0)
+                  barSeconds = 60;
+               if(idx < ArraySize(gTrailRetryAfter))
+                  gTrailRetryAfter[idx] = nowTs + barSeconds;
                Print("Trailing modify failed on ", symbol, " retcode=", ret, " err=", GetLastError());
+            }
+         }
+         else if(idx < ArraySize(gTrailRetryAfter))
+         {
+            gTrailRetryAfter[idx] = (datetime)0;
          }
       }
    }
