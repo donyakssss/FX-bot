@@ -1,7 +1,7 @@
 import ccxt from "ccxt";
 import crypto from "node:crypto";
 import type { SignalPayload } from "../types/journal.js";
-import { enqueueMt5Order, type Mt5QueuedOrder } from "./mt5Bridge.js";
+import { enqueueMt5Order, listAllMt5Orders, type Mt5QueuedOrder } from "./mt5Bridge.js";
 
 type BrokerType = "paper" | "binance" | "mt5";
 
@@ -158,6 +158,32 @@ const executeMt5 = async (payload: SignalPayload): Promise<ExecutionResult> => {
   const brokerSymbol = mapSymbolForMt5(payload.snapshot.symbol);
   const trailing = trailingByMode(payload.setup.appliedMode);
   const hash = signalHash(payload, orderType, entryPrice);
+
+  const orders = listAllMt5Orders();
+  const symbolKey = payload.snapshot.symbol.replace(/[^a-z0-9]/gi, "").toLowerCase();
+  const brokerKey = brokerSymbol.replace(/[^a-z0-9]/gi, "").toLowerCase();
+  const hasActiveSameSymbol = orders.some((item) => {
+    if (item.status === "REJECTED") {
+      return false;
+    }
+
+    const itemSymbolKey = item.symbol.replace(/[^a-z0-9]/gi, "").toLowerCase();
+    const itemBrokerKey = item.brokerSymbol.replace(/[^a-z0-9]/gi, "").toLowerCase();
+
+    return (
+      item.tradeMode === payload.setup.appliedMode &&
+      item.direction === (payload.setup.direction === "BUY" ? "BUY" : "SELL") &&
+      (itemSymbolKey === symbolKey || itemBrokerKey === brokerKey || itemSymbolKey === brokerKey || itemBrokerKey === symbolKey)
+    );
+  });
+
+  if (hasActiveSameSymbol) {
+    return {
+      executed: false,
+      broker: "mt5",
+      message: `MT5 order skipped for ${payload.snapshot.symbol}: active order already exists for this symbol.`
+    };
+  }
 
  const orderId = crypto.randomUUID();
 

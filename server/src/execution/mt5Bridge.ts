@@ -36,6 +36,20 @@ const claimTtlMs = Number(process.env.MT5_ORDER_CLAIM_TTL_MS ?? 30000);
 
 const normalizeSymbolKey = (value: string): string => value.replace(/[^a-z0-9]/gi, "").toLowerCase();
 
+const sameSymbol = (left: Mt5QueuedOrder, rightSymbol: string, rightBrokerSymbol?: string): boolean => {
+  const leftSymbolKey = normalizeSymbolKey(left.symbol);
+  const leftBrokerKey = normalizeSymbolKey(left.brokerSymbol);
+  const rightSymbolKey = normalizeSymbolKey(rightSymbol);
+  const rightBrokerKey = normalizeSymbolKey(rightBrokerSymbol ?? rightSymbol);
+
+  return (
+    leftSymbolKey === rightSymbolKey ||
+    leftBrokerKey === rightBrokerKey ||
+    leftSymbolKey === rightBrokerKey ||
+    leftBrokerKey === rightSymbolKey
+  );
+};
+
 const isChartSymbolMatch = (order: Mt5QueuedOrder, chartSymbol?: string): boolean => {
   if (!chartSymbol) {
     return true;
@@ -80,6 +94,44 @@ const save = (orders: Mt5QueuedOrder[]): void => {
 
 export const enqueueMt5Order = (order: Mt5QueuedOrder): Mt5QueuedOrder => {
   const orders = load();
+
+  const activeSameSymbol = orders.find(
+    (item) =>
+      item.status !== "REJECTED" &&
+      sameSymbol(item, order.symbol, order.brokerSymbol) &&
+      item.tradeMode === order.tradeMode &&
+      item.direction === order.direction
+  );
+
+  if (activeSameSymbol) {
+    return activeSameSymbol;
+  }
+
+  const cooldownMinutesByMode: Record<Mt5QueuedOrder["tradeMode"], number> = {
+    scalp: 6,
+    day: 15,
+    swing: 45,
+    position: 90
+  };
+  const cooldownMs = cooldownMinutesByMode[order.tradeMode] * 60_000;
+  const now = Date.parse(order.createdAt);
+
+  const recentSameSymbol = orders.find((item) => {
+    if (!sameSymbol(item, order.symbol, order.brokerSymbol) || item.tradeMode !== order.tradeMode || item.direction !== order.direction) {
+      return false;
+    }
+
+    const itemCreatedAt = Date.parse(item.createdAt);
+    if (!Number.isFinite(itemCreatedAt) || !Number.isFinite(now)) {
+      return false;
+    }
+
+    return now - itemCreatedAt < cooldownMs;
+  });
+
+  if (recentSameSymbol) {
+    return recentSameSymbol;
+  }
 
   const duplicate = orders.find((item) => item.signalHash === order.signalHash);
 
