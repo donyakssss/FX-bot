@@ -278,6 +278,43 @@ bool IsSymbolTradableForSide(const string symbol, const bool isBuy, string &reas
    return true;
 }
 
+bool IsSymbolCompatible(const string baseSymbol, const string brokerSymbol)
+{
+   string baseKey = NormalizeSymbolKey(baseSymbol);
+   string brokerKey = NormalizeSymbolKey(brokerSymbol);
+
+   if(baseKey == "" || brokerKey == "")
+      return false;
+
+   if(StringFind(brokerKey, baseKey) >= 0)
+      return true;
+
+   if(StringFind(baseKey, brokerKey) >= 0)
+      return true;
+
+   return false;
+}
+
+bool IsOrderPriceSaneForSymbol(const string brokerSymbol, const double entry, string &reason)
+{
+   reason = "";
+   double bid = SymbolInfoDouble(brokerSymbol, SYMBOL_BID);
+   double ask = SymbolInfoDouble(brokerSymbol, SYMBOL_ASK);
+   double ref = (bid > 0.0 && ask > 0.0) ? ((bid + ask) * 0.5) : (bid > 0.0 ? bid : ask);
+
+   if(entry <= 0.0 || ref <= 0.0)
+      return true;
+
+   double ratio = entry / ref;
+   if(ratio < 0.2 || ratio > 5.0)
+   {
+      reason = "Entry price is incompatible with symbol market price";
+      return false;
+   }
+
+   return true;
+}
+
 void ApplyTrailingForAllPositions()
 {
    for(int i = PositionsTotal() - 1; i >= 0; i--)
@@ -787,6 +824,13 @@ bool PlacePendingOrder(const string obj)
 
    bool isBuyOrder = (orderType == "BUY_LIMIT");
 
+   if(!IsSymbolCompatible(symbol, brokerSymbol))
+   {
+      string previous = brokerSymbol;
+      brokerSymbol = ResolveBrokerSymbol(symbol, symbol, isBuyOrder);
+      Print("Incompatible broker symbol from queue. Base=", symbol, " Provided=", previous, " Resolved=", brokerSymbol);
+   }
+
    if(!SymbolSelect(brokerSymbol, true))
    {
       brokerSymbol = ResolveBrokerSymbol(brokerSymbol, symbol, isBuyOrder);
@@ -810,6 +854,15 @@ bool PlacePendingOrder(const string obj)
          AckOrder(id, "REJECTED", "", sideReason + ". Symbol=" + brokerSymbol);
          return false;
       }
+   }
+
+   string priceReason = "";
+   if(!IsOrderPriceSaneForSymbol(brokerSymbol, entry, priceReason))
+   {
+      string msg = priceReason + ". Base=" + symbol + " Broker=" + brokerSymbol + " Entry=" + DoubleToString(entry, 6);
+      AckOrder(id, "REJECTED", "", msg);
+      Print("Order blocked by price sanity check. ", msg);
+      return false;
    }
 
    if(IsLocalPositionLimitReached(brokerSymbol))
