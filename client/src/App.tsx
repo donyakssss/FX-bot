@@ -53,7 +53,7 @@ export default function App() {
   const [timeframe, setTimeframe] = useState<Timeframe>("H4");
   const [tradeMode, setTradeMode] = useState<TradeMode>("swing");
   const [oneClickExecute, setOneClickExecute] = useState(true);
-  const [oneClickEntryMode, setOneClickEntryMode] = useState<"auto" | "limit" | "market">("market");
+  const [oneClickEntryMode, setOneClickEntryMode] = useState<"auto" | "limit" | "market">("auto");
   const [balance, setBalance] = useState(5000);
   const [riskPercent, setRiskPercent] = useState(1);
   const [result, setResult] = useState<LiveUpdate | null>(null);
