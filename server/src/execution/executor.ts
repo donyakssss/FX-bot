@@ -19,7 +19,7 @@ type ExecuteSignalOptions = {
 
 const broker = (process.env.BROKER ?? "paper") as BrokerType;
 const autoEnabled = process.env.ENABLE_AUTO_EXECUTION === "true";
-const mt5EntryMode = (process.env.MT5_ENTRY_MODE ?? "auto").toLowerCase();
+const mt5EntryMode = (process.env.MT5_ENTRY_MODE ?? "market").toLowerCase();
 
 const resolveEntryMode = (override?: Mt5EntryMode): Mt5EntryMode => {
   if (override) {
@@ -30,7 +30,7 @@ const resolveEntryMode = (override?: Mt5EntryMode): Mt5EntryMode => {
     return mt5EntryMode;
   }
 
-  return "auto";
+  return "market";
 };
 
 const mt5Prefix = process.env.MT5_SYMBOL_PREFIX ?? "";
