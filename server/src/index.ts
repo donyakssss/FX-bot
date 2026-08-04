@@ -445,27 +445,10 @@ app.post("/api/analyze-live", async (req, res) => {
       updatedAt: new Date().toISOString()
     };
     resolveOpenTrades(signalPayload);
-
-    let execution: { executed: boolean; broker: string; message: string } | null = null;
-    const requestedEntryMode =
-      body.entryMode === "market" || body.entryMode === "limit" || body.entryMode === "auto"
-        ? body.entryMode
-        : undefined;
-
-    if (body.executeNow === true && setup.direction !== "NEUTRAL") {
-      execution = await executeSignalOrder(signalPayload, { entryMode: requestedEntryMode });
-      if (execution.executed) {
-        recordSignalTrade(signalPayload, "auto-execution");
-      } else {
-        recordSignalTrade(signalPayload, "signal");
-      }
-    } else {
-      recordSignalTrade(signalPayload, "signal");
-    }
+    recordSignalTrade(signalPayload, "signal");
 
     return res.json({
       ...signalPayload,
-      execution,
       meta: {
         model: "ICT-inspired SMC/CRT engine",
         note: "No trading system can guarantee 100% accuracy. Always validate and manage risk."

@@ -140,7 +140,6 @@ Body example:
 2. Set:
    - `ENABLE_AUTO_EXECUTION=true`
    - `BROKER=paper` (safe test), `BROKER=binance` (crypto execution), or `BROKER=mt5` (MT5 bridge queue)
-   - `MT5_ENTRY_MODE=auto` (`market` for instant entries, `limit` for limit-only, `auto` for smart fallback)
    - If using MT5 bridge, set `MT5_SHARED_SECRET` and send same value in MT5 EA `x-mt5-secret` header
    - Optional MT5 symbol normalization:
        - Leave `MT5_SYMBOL_PREFIX` and `MT5_SYMBOL_SUFFIX` empty for normal auto-detection

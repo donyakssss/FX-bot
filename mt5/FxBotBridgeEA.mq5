@@ -1,5 +1,5 @@
 #property strict
-#property version   "1.05"
+#property version   "1.06"
 #property description "FX Bot MT5 Bridge EA: polls pending orders from Node API and places MT5 pending orders."
 
 #include <Trade/Trade.mqh>
@@ -16,9 +16,6 @@ input double RiskPercentPerTrade = 1.0;
 input bool EnablePartialClose = true;
 input double PartialCloseAtR = 1.0;
 input double PartialClosePercent = 50.0;
-input bool EnableThreatExit = true;
-input double ThreatExitR = -0.95;
-input int MinHoldSecondsBeforeThreatExit = 180;
 input bool EnforceLocalPositionLimits = false;
 input int MaxOpenPositionsByMagic = 3;
 input int MaxOpenPositionsPerSymbol = 1;
@@ -412,22 +409,6 @@ void ApplyTrailingForAllPositions()
                Print("Partial close failed. Symbol=", symbol, " Retcode=", trade.ResultRetcode());
             }
          }
-      }
-
-      if(EnableThreatExit && ThreatExitR < 0.0 && rNow <= ThreatExitR)
-      {
-         datetime openedAt = (datetime)PositionGetInteger(POSITION_TIME);
-         int heldSeconds = (int)(TimeCurrent() - openedAt);
-         if(heldSeconds < MinHoldSecondsBeforeThreatExit)
-            continue;
-
-         if(trade.PositionClose(ticket))
-         {
-            Print("Threat exit executed before full SL. Symbol=", symbol, " RNow=", rNow, " Threshold=", ThreatExitR, " HeldSec=", heldSeconds);
-            continue;
-         }
-
-         Print("Threat exit failed. Symbol=", symbol, " Retcode=", trade.ResultRetcode());
       }
 
       if(newSl > 0.0)
@@ -1087,7 +1068,7 @@ int OnInit()
    trade.SetExpertMagicNumber(MagicNumber);
    trade.SetDeviationInPoints(20);
    EventSetTimer(PollIntervalSec);
-   Print("FX Bot Bridge EA build=1.05");
+   Print("FX Bot Bridge EA build=1.06");
    Print("FX Bot Bridge EA initialized. Poll interval=", PollIntervalSec, "s");
    Print("Remember to allow WebRequest URL: ", gBridgeBaseUrl);
 

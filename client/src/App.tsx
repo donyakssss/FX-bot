@@ -52,8 +52,6 @@ export default function App() {
   const [pairSearch, setPairSearch] = useState("");
   const [timeframe, setTimeframe] = useState<Timeframe>("H4");
   const [tradeMode, setTradeMode] = useState<TradeMode>("swing");
-  const [oneClickExecute, setOneClickExecute] = useState(true);
-  const [oneClickEntryMode, setOneClickEntryMode] = useState<"auto" | "limit" | "market">("auto");
   const [balance, setBalance] = useState(5000);
   const [riskPercent, setRiskPercent] = useState(1);
   const [result, setResult] = useState<LiveUpdate | null>(null);
@@ -214,8 +212,6 @@ export default function App() {
         symbol,
         timeframe,
         tradeMode,
-        executeNow: oneClickExecute,
-        entryMode: oneClickEntryMode,
         risk: {
           accountBalance: balance,
           riskPercent
@@ -431,27 +427,6 @@ export default function App() {
           <button type="button" onClick={onStart}>
             Run Analysis Now
           </button>
-
-          <label className="toggle-row">
-            <input
-              type="checkbox"
-              checked={oneClickExecute}
-              onChange={(e) => setOneClickExecute(e.target.checked)}
-            />
-            One-Click Execute On Run
-          </label>
-
-          <label>
-            One-Click Entry Mode
-            <select
-              value={oneClickEntryMode}
-              onChange={(e) => setOneClickEntryMode(e.target.value as "auto" | "limit" | "market")}
-            >
-              <option value="market">Market (instant)</option>
-              <option value="auto">Auto (fallback smart)</option>
-              <option value="limit">Limit only</option>
-            </select>
-          </label>
 
           <label className="toggle-row">
             <input

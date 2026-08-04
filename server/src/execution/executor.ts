@@ -11,27 +11,10 @@ type ExecutionResult = {
   message: string;
 };
 
-type Mt5OrderType = "BUY_LIMIT" | "SELL_LIMIT" | "BUY_MARKET" | "SELL_MARKET";
-type Mt5EntryMode = "auto" | "limit" | "market";
-type ExecuteSignalOptions = {
-  entryMode?: Mt5EntryMode;
-};
+type Mt5OrderType = "BUY_LIMIT" | "SELL_LIMIT";
 
 const broker = (process.env.BROKER ?? "paper") as BrokerType;
 const autoEnabled = process.env.ENABLE_AUTO_EXECUTION === "true";
-const mt5EntryMode = (process.env.MT5_ENTRY_MODE ?? "auto").toLowerCase();
-
-const resolveEntryMode = (override?: Mt5EntryMode): Mt5EntryMode => {
-  if (override) {
-    return override;
-  }
-
-  if (mt5EntryMode === "limit" || mt5EntryMode === "market") {
-    return mt5EntryMode;
-  }
-
-  return "auto";
-};
 
 const mt5Prefix = process.env.MT5_SYMBOL_PREFIX ?? "";
 const mt5Suffix = process.env.MT5_SYMBOL_SUFFIX ?? "";
@@ -144,7 +127,7 @@ const executeBinance = async (payload: SignalPayload): Promise<ExecutionResult> 
   };
 };
 
-const executeMt5 = async (payload: SignalPayload, entryMode: Mt5EntryMode): Promise<ExecutionResult> => {
+const executeMt5 = async (payload: SignalPayload): Promise<ExecutionResult> => {
   if (
     payload.snapshot.market !== "forex" &&
     payload.snapshot.market !== "metals" &&
@@ -159,11 +142,7 @@ const executeMt5 = async (payload: SignalPayload, entryMode: Mt5EntryMode): Prom
   }
 
   const primaryLimit = payload.setup.futureEntries[0];
-  const useMarketEntry =
-    entryMode === "market" ||
-    (entryMode === "auto" && !primaryLimit);
-
-  if (!useMarketEntry && !primaryLimit) {
+  if (!primaryLimit) {
     return {
       executed: false,
       broker: "mt5",
@@ -171,15 +150,10 @@ const executeMt5 = async (payload: SignalPayload, entryMode: Mt5EntryMode): Prom
     };
   }
 
-  const orderType: Mt5OrderType = useMarketEntry
-    ? payload.setup.direction === "BUY"
-      ? "BUY_MARKET"
-      : "SELL_MARKET"
-    : primaryLimit!.orderType;
-
-  const entryPrice = useMarketEntry ? payload.setup.entry : primaryLimit!.entry;
-  const stopLoss = useMarketEntry ? payload.setup.stopLoss : primaryLimit!.stopLoss;
-  const takeProfit = useMarketEntry ? payload.setup.takeProfit : primaryLimit!.takeProfit;
+  const orderType: Mt5OrderType = primaryLimit.orderType;
+  const entryPrice = primaryLimit.entry;
+  const stopLoss = primaryLimit.stopLoss;
+  const takeProfit = primaryLimit.takeProfit;
 
   const brokerSymbol = mapSymbolForMt5(payload.snapshot.symbol);
   const trailing = trailingByMode(payload.setup.appliedMode);
@@ -226,10 +200,7 @@ console.log("======================================");
   };
 };
 
-export const executeSignalOrder = async (
-  payload: SignalPayload,
-  options?: ExecuteSignalOptions
-): Promise<ExecutionResult> => {
+export const executeSignalOrder = async (payload: SignalPayload): Promise<ExecutionResult> => {
     console.log("ENTERED executeSignalOrder");
     console.log("Broker =", broker);
     console.log("Auto =", autoEnabled);
@@ -254,7 +225,7 @@ console.log("Broker:", broker);
 
     if (broker === "mt5") {
         console.log("Executing MT5");
-      return executeMt5(payload, resolveEntryMode(options?.entryMode));
+        return executeMt5(payload);
     }
 
     console.log("Executing Paper");
