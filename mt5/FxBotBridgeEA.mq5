@@ -1,5 +1,5 @@
 #property strict
-#property version   "1.16"
+#property version   "1.17"
 #property description "FX Bot MT5 Bridge EA: polls pending orders from Node API and places MT5 pending orders."
 
 #include <Trade/Trade.mqh>
@@ -397,10 +397,11 @@ void ApplyTrailingForAllPositions()
       double point = SymbolInfoDouble(symbol, SYMBOL_POINT);
       double minDistance = MinStopDistance(symbol);
       int digits = (int)SymbolInfoInteger(symbol, SYMBOL_DIGITS);
+      double bid = SymbolInfoDouble(symbol, SYMBOL_BID);
+      double ask = SymbolInfoDouble(symbol, SYMBOL_ASK);
 
       if(posType == POSITION_TYPE_BUY)
       {
-         double bid = SymbolInfoDouble(symbol, SYMBOL_BID);
          rNow = (bid - entry) / risk;
 
          if(rNow >= breakEvenR && (currentSl < entry || currentSl == 0.0))
@@ -418,7 +419,6 @@ void ApplyTrailingForAllPositions()
       }
       else if(posType == POSITION_TYPE_SELL)
       {
-         double ask = SymbolInfoDouble(symbol, SYMBOL_ASK);
          rNow = (entry - ask) / risk;
 
          if(rNow >= breakEvenR && (currentSl > entry || currentSl == 0.0))
@@ -460,12 +460,21 @@ void ApplyTrailingForAllPositions()
       if(newSl > 0.0)
       {
          newSl = NormalizeDouble(newSl, digits);
+         double modifyTp = tp;
+
+         if(modifyTp > 0.0)
+         {
+            if(posType == POSITION_TYPE_BUY && modifyTp <= (bid + minDistance))
+               modifyTp = 0.0;
+            else if(posType == POSITION_TYPE_SELL && modifyTp >= (ask - minDistance))
+               modifyTp = 0.0;
+         }
 
          // Skip no-op trailing updates to avoid retcode/no-change spam.
-         if(currentSl > 0.0 && MathAbs(newSl - currentSl) <= (point * 0.5))
+         if(currentSl > 0.0 && MathAbs(newSl - currentSl) <= (point * 0.5) && MathAbs(modifyTp - tp) <= (point * 0.5))
             continue;
 
-         if(!trade.PositionModify(symbol, newSl, tp))
+         if(!trade.PositionModify(symbol, newSl, modifyTp))
          {
             int ret = (int)trade.ResultRetcode();
             if(ret != TRADE_RETCODE_NO_CHANGES)
@@ -679,7 +688,8 @@ double MinStopDistance(const string symbol)
 {
    double point = SymbolInfoDouble(symbol, SYMBOL_POINT);
    int stopsLevel = (int)SymbolInfoInteger(symbol, SYMBOL_TRADE_STOPS_LEVEL);
-   return MathMax(point * stopsLevel, point * 10.0);
+   int freezeLevel = (int)SymbolInfoInteger(symbol, SYMBOL_TRADE_FREEZE_LEVEL);
+   return MathMax(point * MathMax(stopsLevel, freezeLevel), point * 10.0);
 }
 
 void EnsureStopsForOrder(
