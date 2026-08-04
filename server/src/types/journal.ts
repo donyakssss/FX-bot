@@ -50,7 +50,7 @@ export type SignalPayload = {
     takeProfit: number;
     signalQuality: "LOW" | "MEDIUM" | "HIGH" | "PERFECT";
     futureEntries: Array<{
-      orderType: "BUY_LIMIT" | "SELL_LIMIT";
+      orderType: "BUY_LIMIT" | "SELL_LIMIT" | "BUY_STOP" | "SELL_STOP";
       entry: number;
       stopLoss: number;
       takeProfit: number;

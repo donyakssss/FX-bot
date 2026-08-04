@@ -11,7 +11,7 @@ type ExecutionResult = {
   message: string;
 };
 
-type Mt5OrderType = "BUY_LIMIT" | "SELL_LIMIT";
+type Mt5OrderType = "BUY_LIMIT" | "SELL_LIMIT" | "BUY_STOP" | "SELL_STOP";
 
 const broker = (process.env.BROKER ?? "paper") as BrokerType;
 const autoEnabled = process.env.ENABLE_AUTO_EXECUTION === "true";

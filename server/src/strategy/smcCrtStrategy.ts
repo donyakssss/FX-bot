@@ -106,7 +106,7 @@ export const analyzeSetup = (request: AnalyzeRequest): TradeSetup => {
       const limitSl = Math.min(swings.low, ladderEntries[2] - avgRange * Math.max(1, stopMult));
       const limitTp = limitEntry + (limitEntry - limitSl) * tpMult;
       futureEntries.push({
-        orderType: "BUY_LIMIT",
+        orderType: limitEntry <= latest.close ? "BUY_LIMIT" : "BUY_STOP",
         entry: round(limitEntry),
         stopLoss: round(limitSl),
         takeProfit: round(limitTp),
@@ -133,7 +133,7 @@ export const analyzeSetup = (request: AnalyzeRequest): TradeSetup => {
       const limitSl = Math.max(swings.high, ladderEntries[2] + avgRange * Math.max(1, stopMult));
       const limitTp = limitEntry - (limitSl - limitEntry) * tpMult;
       futureEntries.push({
-        orderType: "SELL_LIMIT",
+        orderType: limitEntry >= latest.close ? "SELL_LIMIT" : "SELL_STOP",
         entry: round(limitEntry),
         stopLoss: round(limitSl),
         takeProfit: round(limitTp),

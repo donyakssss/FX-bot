@@ -1,5 +1,5 @@
 #property strict
-#property version   "1.14"
+#property version   "1.15"
 #property description "FX Bot MT5 Bridge EA: polls pending orders from Node API and places MT5 pending orders."
 
 #include <Trade/Trade.mqh>
@@ -743,7 +743,7 @@ bool ExecuteMarketFallback(const string brokerSymbol, const string orderType, co
 
    string comment = "FXB:" + StringSubstr(id, 0, 8) + ":MKT";
    bool ok = false;
-   bool isBuy = (orderType == "BUY_LIMIT" || orderType == "BUY_MARKET");
+   bool isBuy = (orderType == "BUY_LIMIT" || orderType == "BUY_STOP" || orderType == "BUY_MARKET");
    double bid = SymbolInfoDouble(brokerSymbol, SYMBOL_BID);
    double ask = SymbolInfoDouble(brokerSymbol, SYMBOL_ASK);
    double marketPrice = isBuy ? ask : bid;
@@ -894,12 +894,14 @@ bool PlacePendingOrder(const string obj)
       brokerSymbol = _Symbol;
    }
 
-   bool isBuyOrder = (orderType == "BUY_LIMIT" || orderType == "BUY_MARKET");
+   bool isBuyOrder = (orderType == "BUY_LIMIT" || orderType == "BUY_STOP" || orderType == "BUY_MARKET");
    bool isMarketOrder = (orderType == "BUY_MARKET" || orderType == "SELL_MARKET");
 
    if(
       orderType != "BUY_LIMIT" &&
       orderType != "SELL_LIMIT" &&
+      orderType != "BUY_STOP" &&
+      orderType != "SELL_STOP" &&
       orderType != "BUY_MARKET" &&
       orderType != "SELL_MARKET"
    )
@@ -1001,9 +1003,21 @@ bool PlacePendingOrder(const string obj)
       EnsureStopsForOrder(brokerSymbol, true, entry, adjustedStopLoss, adjustedTakeProfit);
       tradeVolume = ComputeRiskBasedVolume(brokerSymbol, true, entry, adjustedStopLoss, lotSize);
    }
+   else if(orderType == "BUY_STOP")
+   {
+      validPending = entry > (ask + minDistance);
+      EnsureStopsForOrder(brokerSymbol, true, entry, adjustedStopLoss, adjustedTakeProfit);
+      tradeVolume = ComputeRiskBasedVolume(brokerSymbol, true, entry, adjustedStopLoss, lotSize);
+   }
    else if(orderType == "SELL_LIMIT")
    {
       validPending = entry > (bid + minDistance);
+      EnsureStopsForOrder(brokerSymbol, false, entry, adjustedStopLoss, adjustedTakeProfit);
+      tradeVolume = ComputeRiskBasedVolume(brokerSymbol, false, entry, adjustedStopLoss, lotSize);
+   }
+   else if(orderType == "SELL_STOP")
+   {
+      validPending = entry < (bid - minDistance);
       EnsureStopsForOrder(brokerSymbol, false, entry, adjustedStopLoss, adjustedTakeProfit);
       tradeVolume = ComputeRiskBasedVolume(brokerSymbol, false, entry, adjustedStopLoss, lotSize);
    }
@@ -1044,8 +1058,12 @@ bool PlacePendingOrder(const string obj)
 
    if(orderType == "BUY_LIMIT")
       req.type = ORDER_TYPE_BUY_LIMIT;
+   else if(orderType == "BUY_STOP")
+      req.type = ORDER_TYPE_BUY_STOP;
    else if(orderType == "SELL_LIMIT")
       req.type = ORDER_TYPE_SELL_LIMIT;
+   else if(orderType == "SELL_STOP")
+      req.type = ORDER_TYPE_SELL_STOP;
 
    req.price = NormalizeDouble(entry, (int)SymbolInfoInteger(brokerSymbol, SYMBOL_DIGITS));
    req.sl = adjustedStopLoss;
@@ -1149,7 +1167,7 @@ int OnInit()
    trade.SetExpertMagicNumber(MagicNumber);
    trade.SetDeviationInPoints(20);
    EventSetTimer(PollIntervalSec);
-   Print("FX Bot Bridge EA build=1.14");
+   Print("FX Bot Bridge EA build=1.15");
    Print("FX Bot Bridge EA initialized. Poll interval=", PollIntervalSec, "s");
    Print("Remember to allow WebRequest URL: ", gBridgeBaseUrl);
 

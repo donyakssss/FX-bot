@@ -16,7 +16,7 @@ export type Mt5QueuedOrder = {
   brokerSymbol: string;
   tradeMode: "scalp" | "day" | "swing" | "position";
   direction: "BUY" | "SELL";
-  orderType: "BUY_LIMIT" | "SELL_LIMIT";
+  orderType: "BUY_LIMIT" | "SELL_LIMIT" | "BUY_STOP" | "SELL_STOP";
   entry: number;
   stopLoss: number;
   takeProfit: number;
