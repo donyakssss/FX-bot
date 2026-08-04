@@ -1,5 +1,5 @@
 #property strict
-#property version   "1.15"
+#property version   "1.16"
 #property description "FX Bot MT5 Bridge EA: polls pending orders from Node API and places MT5 pending orders."
 
 #include <Trade/Trade.mqh>
@@ -861,6 +861,7 @@ bool PlacePendingOrder(const string obj)
    string symbol = ExtractJsonValue(obj, "symbol");
    string brokerSymbol = ExtractJsonValue(obj, "brokerSymbol");
    string orderType = ExtractJsonValue(obj, "orderType");
+   string effectiveOrderType = orderType;
 
    double entry = StringToDouble(ExtractJsonValue(obj, "entry"));
    double stopLoss = StringToDouble(ExtractJsonValue(obj, "stopLoss"));
@@ -894,16 +895,16 @@ bool PlacePendingOrder(const string obj)
       brokerSymbol = _Symbol;
    }
 
-   bool isBuyOrder = (orderType == "BUY_LIMIT" || orderType == "BUY_STOP" || orderType == "BUY_MARKET");
-   bool isMarketOrder = (orderType == "BUY_MARKET" || orderType == "SELL_MARKET");
+   bool isBuyOrder = (effectiveOrderType == "BUY_LIMIT" || effectiveOrderType == "BUY_STOP" || effectiveOrderType == "BUY_MARKET");
+   bool isMarketOrder = (effectiveOrderType == "BUY_MARKET" || effectiveOrderType == "SELL_MARKET");
 
    if(
-      orderType != "BUY_LIMIT" &&
-      orderType != "SELL_LIMIT" &&
-      orderType != "BUY_STOP" &&
-      orderType != "SELL_STOP" &&
-      orderType != "BUY_MARKET" &&
-      orderType != "SELL_MARKET"
+      effectiveOrderType != "BUY_LIMIT" &&
+      effectiveOrderType != "SELL_LIMIT" &&
+      effectiveOrderType != "BUY_STOP" &&
+      effectiveOrderType != "SELL_STOP" &&
+      effectiveOrderType != "BUY_MARKET" &&
+      effectiveOrderType != "SELL_MARKET"
    )
    {
       AckOrder(id, "REJECTED", "", "Unsupported orderType");
@@ -997,29 +998,56 @@ bool PlacePendingOrder(const string obj)
    double minDistance = MathMax(point * stopsLevel, point * 5.0);
    bool validPending = true;
 
-   if(orderType == "BUY_LIMIT")
+   if(effectiveOrderType == "BUY_LIMIT")
    {
       validPending = entry < (ask - minDistance);
       EnsureStopsForOrder(brokerSymbol, true, entry, adjustedStopLoss, adjustedTakeProfit);
       tradeVolume = ComputeRiskBasedVolume(brokerSymbol, true, entry, adjustedStopLoss, lotSize);
    }
-   else if(orderType == "BUY_STOP")
+   else if(effectiveOrderType == "BUY_STOP")
    {
       validPending = entry > (ask + minDistance);
       EnsureStopsForOrder(brokerSymbol, true, entry, adjustedStopLoss, adjustedTakeProfit);
       tradeVolume = ComputeRiskBasedVolume(brokerSymbol, true, entry, adjustedStopLoss, lotSize);
    }
-   else if(orderType == "SELL_LIMIT")
+   else if(effectiveOrderType == "SELL_LIMIT")
    {
       validPending = entry > (bid + minDistance);
       EnsureStopsForOrder(brokerSymbol, false, entry, adjustedStopLoss, adjustedTakeProfit);
       tradeVolume = ComputeRiskBasedVolume(brokerSymbol, false, entry, adjustedStopLoss, lotSize);
    }
-   else if(orderType == "SELL_STOP")
+   else if(effectiveOrderType == "SELL_STOP")
    {
       validPending = entry < (bid - minDistance);
       EnsureStopsForOrder(brokerSymbol, false, entry, adjustedStopLoss, adjustedTakeProfit);
       tradeVolume = ComputeRiskBasedVolume(brokerSymbol, false, entry, adjustedStopLoss, lotSize);
+   }
+
+   if(!validPending)
+   {
+      if(effectiveOrderType == "BUY_LIMIT" && entry > (ask + minDistance))
+      {
+         effectiveOrderType = "BUY_STOP";
+         validPending = true;
+      }
+      else if(effectiveOrderType == "BUY_STOP" && entry < (ask - minDistance))
+      {
+         effectiveOrderType = "BUY_LIMIT";
+         validPending = true;
+      }
+      else if(effectiveOrderType == "SELL_LIMIT" && entry < (bid - minDistance))
+      {
+         effectiveOrderType = "SELL_STOP";
+         validPending = true;
+      }
+      else if(effectiveOrderType == "SELL_STOP" && entry > (bid + minDistance))
+      {
+         effectiveOrderType = "SELL_LIMIT";
+         validPending = true;
+      }
+
+      if(validPending)
+         Print("Pending entry crossed market; remapped type. Symbol=", brokerSymbol, " NewType=", effectiveOrderType, " Entry=", entry, " Bid=", bid, " Ask=", ask);
    }
 
    if(!validPending)
@@ -1032,7 +1060,7 @@ bool PlacePendingOrder(const string obj)
       }
 
       Print("Pending entry invalid for ", brokerSymbol, ". Switching to market order. Entry=", entry, " Bid=", bid, " Ask=", ask, " MinDistance=", minDistance);
-      if(ExecuteMarketFallback(brokerSymbol, orderType, lotSize, stopLoss, takeProfit, id))
+      if(ExecuteMarketFallback(brokerSymbol, effectiveOrderType, lotSize, stopLoss, takeProfit, id))
       {
          AckOrder(id, "FILLED", IntegerToString((int)trade.ResultOrder()), "Order executed as market fallback because pending entry was invalid");
          return true;
@@ -1056,13 +1084,13 @@ bool PlacePendingOrder(const string obj)
    req.type_time = ORDER_TIME_GTC;
    req.type_filling = ORDER_FILLING_RETURN;
 
-   if(orderType == "BUY_LIMIT")
+   if(effectiveOrderType == "BUY_LIMIT")
       req.type = ORDER_TYPE_BUY_LIMIT;
-   else if(orderType == "BUY_STOP")
+   else if(effectiveOrderType == "BUY_STOP")
       req.type = ORDER_TYPE_BUY_STOP;
-   else if(orderType == "SELL_LIMIT")
+   else if(effectiveOrderType == "SELL_LIMIT")
       req.type = ORDER_TYPE_SELL_LIMIT;
-   else if(orderType == "SELL_STOP")
+   else if(effectiveOrderType == "SELL_STOP")
       req.type = ORDER_TYPE_SELL_STOP;
 
    req.price = NormalizeDouble(entry, (int)SymbolInfoInteger(brokerSymbol, SYMBOL_DIGITS));
@@ -1083,7 +1111,7 @@ bool PlacePendingOrder(const string obj)
          }
 
          Print("Pending order rejected by broker limit. Switching to market fallback for ", brokerSymbol, " retcode=", (int)res.retcode);
-         if(ExecuteMarketFallback(brokerSymbol, orderType, lotSize, stopLoss, takeProfit, id))
+         if(ExecuteMarketFallback(brokerSymbol, effectiveOrderType, lotSize, stopLoss, takeProfit, id))
          {
             AckOrder(id, "FILLED", IntegerToString((int)trade.ResultOrder()), "Market fallback after pending-order limit");
             return true;
@@ -1104,7 +1132,7 @@ bool PlacePendingOrder(const string obj)
 
       string msg = "OrderSend failed. Retcode=" + IntegerToString((int)res.retcode);
       AckOrder(id, "REJECTED", "", msg);
-      Print(msg, " symbol=", brokerSymbol, " type=", orderType);
+      Print(msg, " symbol=", brokerSymbol, " type=", effectiveOrderType);
       return false;
    }
 
@@ -1167,7 +1195,7 @@ int OnInit()
    trade.SetExpertMagicNumber(MagicNumber);
    trade.SetDeviationInPoints(20);
    EventSetTimer(PollIntervalSec);
-   Print("FX Bot Bridge EA build=1.15");
+   Print("FX Bot Bridge EA build=1.16");
    Print("FX Bot Bridge EA initialized. Poll interval=", PollIntervalSec, "s");
    Print("Remember to allow WebRequest URL: ", gBridgeBaseUrl);
 
