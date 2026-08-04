@@ -1,5 +1,5 @@
 #property strict
-#property version   "1.07"
+#property version   "1.08"
 #property description "FX Bot MT5 Bridge EA: polls pending orders from Node API and places MT5 pending orders."
 
 #include <Trade/Trade.mqh>
@@ -8,10 +8,11 @@ input string BridgeBaseUrl = "https://fx-bot-api.onrender.com";
 input string SharedSecret = "2aHV4uomWzl/F9F2KGygTIBXRqGGA/LVeE6NWmfsDOE=";
 input int PollIntervalSec = 5;
 input int RequestTimeoutMs = 15000;
-input bool RestrictToCurrentChartSymbol = false;
+input bool RestrictToCurrentChartSymbol = true;
 input int MaxOrdersPerPoll = 5;
 input ulong MagicNumber = 20260714;
 input bool EnablePriceSanityCheck = false;
+input bool EnableMarketFallback = false;
 input bool AutoLotByAccountRisk = true;
 input double RiskPercentPerTrade = 1.0;
 input bool EnablePartialClose = true;
@@ -953,10 +954,16 @@ bool PlacePendingOrder(const string obj)
    if(!validPending)
    {
       Print("Pending entry invalid for ", brokerSymbol, ". Switching to market order. Entry=", entry, " Bid=", bid, " Ask=", ask, " MinDistance=", minDistance);
-      if(ExecuteMarketFallback(brokerSymbol, orderType, lotSize, stopLoss, takeProfit, id))
+      if(EnableMarketFallback && ExecuteMarketFallback(brokerSymbol, orderType, lotSize, stopLoss, takeProfit, id))
       {
          AckOrder(id, "FILLED", IntegerToString((int)trade.ResultOrder()), "Order executed as market fallback because pending entry was invalid");
          return true;
+      }
+
+      if(!EnableMarketFallback)
+      {
+         AckOrder(id, "REJECTED", "", "Pending entry invalid and market fallback disabled");
+         return false;
       }
 
       string fallbackMsg = "Market fallback failed after invalid pending entry. Retcode=" + IntegerToString((int)trade.ResultRetcode());
@@ -993,10 +1000,16 @@ bool PlacePendingOrder(const string obj)
       if(res.retcode == 10033 || res.retcode == 10040)
       {
          Print("Pending order rejected by broker limit. Switching to market fallback for ", brokerSymbol, " retcode=", (int)res.retcode);
-         if(ExecuteMarketFallback(brokerSymbol, orderType, lotSize, stopLoss, takeProfit, id))
+         if(EnableMarketFallback && ExecuteMarketFallback(brokerSymbol, orderType, lotSize, stopLoss, takeProfit, id))
          {
             AckOrder(id, "FILLED", IntegerToString((int)trade.ResultOrder()), "Market fallback after pending-order limit");
             return true;
+         }
+
+         if(!EnableMarketFallback)
+         {
+            AckOrder(id, "REJECTED", "", "Pending-order limit hit and market fallback disabled");
+            return false;
          }
       }
 
@@ -1069,7 +1082,7 @@ int OnInit()
    trade.SetExpertMagicNumber(MagicNumber);
    trade.SetDeviationInPoints(20);
    EventSetTimer(PollIntervalSec);
-   Print("FX Bot Bridge EA build=1.07");
+   Print("FX Bot Bridge EA build=1.08");
    Print("FX Bot Bridge EA initialized. Poll interval=", PollIntervalSec, "s");
    Print("Remember to allow WebRequest URL: ", gBridgeBaseUrl);
 
