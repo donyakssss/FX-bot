@@ -1,5 +1,5 @@
 #property strict
-#property version   "1.12"
+#property version   "1.13"
 #property description "FX Bot MT5 Bridge EA: polls pending orders from Node API and places MT5 pending orders."
 
 #include <Trade/Trade.mqh>
@@ -12,7 +12,7 @@ input bool RestrictToCurrentChartSymbol = true;
 input int MaxOrdersPerPoll = 5;
 input ulong MagicNumber = 20260714;
 input bool EnablePriceSanityCheck = true;
-input bool EnableSingleInstance = true;
+input bool EnableSingleInstance = false;
 input bool EnableMarketFallback = false;
 input bool AutoLotByAccountRisk = true;
 input double RiskPercentPerTrade = 1.0;
@@ -322,6 +322,20 @@ bool IsSymbolCompatible(const string baseSymbol, const string brokerSymbol)
       return true;
 
    if(StringFind(baseKey, brokerKey) >= 0)
+      return true;
+
+   return false;
+}
+
+bool IsChartSymbolMatch(const string baseSymbol, const string brokerSymbol, const string chartSymbol)
+{
+   if(chartSymbol == "")
+      return true;
+
+   if(IsSymbolCompatible(baseSymbol, chartSymbol))
+      return true;
+
+   if(IsSymbolCompatible(brokerSymbol, chartSymbol))
       return true;
 
    return false;
@@ -868,10 +882,16 @@ bool PlacePendingOrder(const string obj)
       return false;
    }
 
-   if(RestrictToCurrentChartSymbol && brokerSymbol != _Symbol)
+   if(RestrictToCurrentChartSymbol)
    {
-      AckOrder(id, "REJECTED", "", "Symbol not allowed on this chart");
-      return false;
+      if(!IsChartSymbolMatch(symbol, brokerSymbol, _Symbol))
+      {
+         AckOrder(id, "REJECTED", "", "Symbol not allowed on this chart");
+         return false;
+      }
+
+      // Pin execution to this chart's exact broker symbol for strict pair isolation.
+      brokerSymbol = _Symbol;
    }
 
    bool isBuyOrder = (orderType == "BUY_LIMIT" || orderType == "BUY_MARKET");
@@ -1127,7 +1147,7 @@ int OnInit()
    trade.SetExpertMagicNumber(MagicNumber);
    trade.SetDeviationInPoints(20);
    EventSetTimer(PollIntervalSec);
-   Print("FX Bot Bridge EA build=1.12");
+   Print("FX Bot Bridge EA build=1.13");
    Print("FX Bot Bridge EA initialized. Poll interval=", PollIntervalSec, "s");
    Print("Remember to allow WebRequest URL: ", gBridgeBaseUrl);
 
