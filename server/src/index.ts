@@ -311,7 +311,8 @@ app.get("/api/mt5/orders/pending", (req, res) => {
     const maxRaw = Number(req.query.max ?? 5);
     const max = Number.isFinite(maxRaw) ? Math.max(1, Math.min(20, Math.floor(maxRaw))) : 5;
     const owner = String(req.query.mt5Owner ?? "mt5-ea");
-    const orders = claimPendingMt5Orders(max, owner);
+    const chartSymbol = String(req.query.mt5ChartSymbol ?? "").trim();
+    const orders = claimPendingMt5Orders(max, owner, chartSymbol || undefined);
 
     console.log("Orders:", JSON.stringify(orders, null, 2));
 

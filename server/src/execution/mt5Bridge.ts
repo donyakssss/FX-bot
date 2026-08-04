@@ -34,6 +34,31 @@ const dataDir = join(process.cwd(), "data");
 const filePath = join(dataDir, "mt5-orders.json");
 const claimTtlMs = Number(process.env.MT5_ORDER_CLAIM_TTL_MS ?? 30000);
 
+const normalizeSymbolKey = (value: string): string => value.replace(/[^a-z0-9]/gi, "").toLowerCase();
+
+const isChartSymbolMatch = (order: Mt5QueuedOrder, chartSymbol?: string): boolean => {
+  if (!chartSymbol) {
+    return true;
+  }
+
+  const chartKey = normalizeSymbolKey(chartSymbol);
+  const brokerKey = normalizeSymbolKey(order.brokerSymbol);
+  const baseKey = normalizeSymbolKey(order.symbol);
+
+  if (!chartKey) {
+    return true;
+  }
+
+  return (
+    brokerKey === chartKey ||
+    baseKey === chartKey ||
+    brokerKey.includes(chartKey) ||
+    chartKey.includes(brokerKey) ||
+    baseKey.includes(chartKey) ||
+    chartKey.includes(baseKey)
+  );
+};
+
 const ensureStore = (): void => {
   if (!existsSync(dataDir)) {
     mkdirSync(dataDir, { recursive: true });
@@ -72,7 +97,7 @@ export const listPendingMt5Orders = (): Mt5QueuedOrder[] =>
     .filter((order) => order.status === "PENDING")
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 
-export const claimPendingMt5Orders = (maxCount: number, owner = "mt5-ea"): Mt5QueuedOrder[] => {
+export const claimPendingMt5Orders = (maxCount: number, owner = "mt5-ea", chartSymbol?: string): Mt5QueuedOrder[] => {
   const orders = load();
   const now = Date.now();
   let changed = false;
@@ -105,6 +130,9 @@ export const claimPendingMt5Orders = (maxCount: number, owner = "mt5-ea"): Mt5Qu
       break;
     }
     if (order.status !== "PENDING") {
+      continue;
+    }
+    if (!isChartSymbolMatch(order, chartSymbol)) {
       continue;
     }
 

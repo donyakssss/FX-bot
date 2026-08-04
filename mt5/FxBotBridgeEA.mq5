@@ -1,5 +1,5 @@
 #property strict
-#property version   "1.11"
+#property version   "1.12"
 #property description "FX Bot MT5 Bridge EA: polls pending orders from Node API and places MT5 pending orders."
 
 #include <Trade/Trade.mqh>
@@ -8,7 +8,7 @@ input string BridgeBaseUrl = "https://fx-bot-api.onrender.com";
 input string SharedSecret = "2aHV4uomWzl/F9F2KGygTIBXRqGGA/LVeE6NWmfsDOE=";
 input int PollIntervalSec = 5;
 input int RequestTimeoutMs = 15000;
-input bool RestrictToCurrentChartSymbol = false;
+input bool RestrictToCurrentChartSymbol = true;
 input int MaxOrdersPerPoll = 5;
 input ulong MagicNumber = 20260714;
 input bool EnablePriceSanityCheck = true;
@@ -1087,6 +1087,8 @@ void PollBridge()
    string url = BuildMt5Url("/api/mt5/orders/pending");
    url += "&max=" + IntegerToString(MaxOrdersPerPoll);
    url += "&mt5Owner=" + UrlEncode(IntegerToString((int)AccountInfoInteger(ACCOUNT_LOGIN)) + ":" + _Symbol);
+   if(RestrictToCurrentChartSymbol)
+      url += "&mt5ChartSymbol=" + UrlEncode(_Symbol);
    string response = "";
 
    if(!HttpGet(url, response))
@@ -1125,7 +1127,7 @@ int OnInit()
    trade.SetExpertMagicNumber(MagicNumber);
    trade.SetDeviationInPoints(20);
    EventSetTimer(PollIntervalSec);
-   Print("FX Bot Bridge EA build=1.11");
+   Print("FX Bot Bridge EA build=1.12");
    Print("FX Bot Bridge EA initialized. Poll interval=", PollIntervalSec, "s");
    Print("Remember to allow WebRequest URL: ", gBridgeBaseUrl);
 
