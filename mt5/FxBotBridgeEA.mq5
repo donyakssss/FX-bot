@@ -1,5 +1,5 @@
 #property strict
-#property version   "1.09"
+#property version   "1.10"
 #property description "FX Bot MT5 Bridge EA: polls pending orders from Node API and places MT5 pending orders."
 
 #include <Trade/Trade.mqh>
@@ -11,7 +11,8 @@ input int RequestTimeoutMs = 15000;
 input bool RestrictToCurrentChartSymbol = false;
 input int MaxOrdersPerPoll = 5;
 input ulong MagicNumber = 20260714;
-input bool EnablePriceSanityCheck = false;
+input bool EnablePriceSanityCheck = true;
+input bool EnableSingleInstance = true;
 input bool EnableMarketFallback = false;
 input bool AutoLotByAccountRisk = true;
 input double RiskPercentPerTrade = 1.0;
@@ -26,6 +27,7 @@ input int MaxPendingOrdersPerSymbol = 2;
 
 CTrade trade;
 string gBridgeBaseUrl = "";
+string gInstanceLockKey = "";
 
 string gTrailSymbols[];
 double gTrailEntry[];
@@ -34,6 +36,34 @@ double gTrailBreakEvenR[];
 double gTrailStartR[];
 double gTrailStepR[];
 bool gPartialTaken[];
+
+bool AcquireInstanceLock()
+{
+   gInstanceLockKey = "FXB_LOCK_" + IntegerToString((int)AccountInfoInteger(ACCOUNT_LOGIN));
+
+   if(GlobalVariableCheck(gInstanceLockKey))
+   {
+      double owner = GlobalVariableGet(gInstanceLockKey);
+      if((long)owner != (long)ChartID())
+         return false;
+   }
+
+   GlobalVariableSet(gInstanceLockKey, (double)ChartID());
+   return true;
+}
+
+void ReleaseInstanceLock()
+{
+   if(gInstanceLockKey == "")
+      return;
+
+   if(!GlobalVariableCheck(gInstanceLockKey))
+      return;
+
+   double owner = GlobalVariableGet(gInstanceLockKey);
+   if((long)owner == (long)ChartID())
+      GlobalVariableDel(gInstanceLockKey);
+}
 
 int FindTrailIndex(const string symbol)
 {
@@ -1079,10 +1109,16 @@ int OnInit()
 {
    gBridgeBaseUrl = NormalizeBaseUrl(BridgeBaseUrl);
 
+   if(EnableSingleInstance && !AcquireInstanceLock())
+   {
+      Print("Another FX Bot Bridge EA instance is already active for this account. Disable EnableSingleInstance to run multiple instances.");
+      return(INIT_FAILED);
+   }
+
    trade.SetExpertMagicNumber(MagicNumber);
    trade.SetDeviationInPoints(20);
    EventSetTimer(PollIntervalSec);
-   Print("FX Bot Bridge EA build=1.09");
+   Print("FX Bot Bridge EA build=1.10");
    Print("FX Bot Bridge EA initialized. Poll interval=", PollIntervalSec, "s");
    Print("Remember to allow WebRequest URL: ", gBridgeBaseUrl);
 
@@ -1098,6 +1134,7 @@ int OnInit()
 void OnDeinit(const int reason)
 {
    EventKillTimer();
+   ReleaseInstanceLock();
 }
 
 void OnTick()
