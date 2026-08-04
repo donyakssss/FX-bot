@@ -49,6 +49,7 @@ export default function App() {
   const [instruments, setInstruments] = useState<Instrument[]>([]);
   const [market, setMarket] = useState<MarketType>("forex");
   const [symbol, setSymbol] = useState("EURUSD");
+  const [pairSearch, setPairSearch] = useState("");
   const [timeframe, setTimeframe] = useState<Timeframe>("H4");
   const [tradeMode, setTradeMode] = useState<TradeMode>("swing");
   const [balance, setBalance] = useState(5000);
@@ -69,6 +70,15 @@ export default function App() {
     [instruments, market]
   );
 
+  const allInstrumentOptions = useMemo(
+    () =>
+      instruments.map((item) => ({
+        ...item,
+        searchLabel: `${item.symbol} ${item.displayName} ${item.market}`
+      })),
+    [instruments]
+  );
+
   useEffect(() => {
     getInstruments()
       .then((items) => {
@@ -86,6 +96,14 @@ export default function App() {
       setSymbol(marketInstruments[0].symbol);
     }
   }, [marketInstruments, symbol]);
+
+  useEffect(() => {
+    if (!symbol || !market) {
+      return;
+    }
+
+    setPairSearch(`${market}:${symbol}`);
+  }, [market, symbol]);
 
   const [socket] = useState(() => connectLiveSocket());
 
@@ -259,6 +277,26 @@ export default function App() {
     setFavorites((prev) => prev.filter((f) => favKey(f) !== favKey(item)));
   }
 
+  function applyPairSearch(rawValue: string) {
+    const value = rawValue.trim().toLowerCase();
+    if (!value) {
+      return;
+    }
+
+    const exactKeyMatch = allInstrumentOptions.find((item) => `${item.market}:${item.symbol}`.toLowerCase() === value);
+    const exactSymbolMatch = allInstrumentOptions.find((item) => item.symbol.toLowerCase() === value);
+    const fuzzyMatch = allInstrumentOptions.find((item) => item.searchLabel.toLowerCase().includes(value));
+    const selected = exactKeyMatch ?? exactSymbolMatch ?? fuzzyMatch;
+
+    if (!selected) {
+      return;
+    }
+
+    setMarket(selected.market);
+    setSymbol(selected.symbol);
+    setError(null);
+  }
+
   return (
     <div className="app-shell professional">
       <header className="hero">
@@ -275,6 +313,28 @@ export default function App() {
           </div>
 
           <div className="grid two">
+            <label>
+              Search Pair (All Markets)
+              <input
+                list="instrument-search-list"
+                value={pairSearch}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  setPairSearch(next);
+                  applyPairSearch(next);
+                }}
+                onBlur={(e) => applyPairSearch(e.target.value)}
+                placeholder="Type BTCUSDT, XAUUSD, EURJPY, or forex:EURUSD"
+              />
+              <datalist id="instrument-search-list">
+                {allInstrumentOptions.map((item) => (
+                  <option key={`${item.market}:${item.symbol}`} value={`${item.market}:${item.symbol}`}>
+                    {item.symbol} - {item.displayName}
+                  </option>
+                ))}
+              </datalist>
+            </label>
+
             <label>
               Market
               <select value={market} onChange={(e) => setMarket(e.target.value as MarketType)}>
