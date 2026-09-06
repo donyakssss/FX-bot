@@ -4,6 +4,7 @@ import type { ExecutionPreferences } from "../types/contracts.js";
 import type { SignalPayload } from "../types/journal.js";
 import { enqueueMt5Order, listAllMt5Orders, type Mt5QueuedOrder } from "./mt5Bridge.js";
 import { sendAlert } from "../notify/alert.js";
+import { getRuntimeConfig } from "../runtime/config.js";
 
 type BrokerType = "paper" | "binance" | "mt5";
 
@@ -47,7 +48,7 @@ const parseSymbolMap = (): Record<string, string> => {
 
 const mt5SymbolMap = parseSymbolMap();
 
-export const isAutoExecutionEnabled = (): boolean => autoEnabled;
+export const isAutoExecutionEnabled = (): boolean => autoEnabled || getRuntimeConfig().enableAutoExecution;
 
 const mapSymbolForMt5 = (symbol: string): string => {
   if (mt5SymbolMap[symbol]) {
@@ -256,7 +257,7 @@ export const executeSignalOrder = async (
   payload: SignalPayload,
   prefs?: ExecutionPreferences
 ): Promise<ExecutionResult> => {
-  if (!autoEnabled) {
+  if (!isAutoExecutionEnabled()) {
     return {
       executed: false,
       broker,
