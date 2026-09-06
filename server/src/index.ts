@@ -14,6 +14,7 @@ import { getStats, listTrades, recordSignalTrade, resetJournal, resolveOpenTrade
 import { executeSignalOrder, isAutoExecutionEnabled } from "./execution/executor.js";
 import { ackMt5Order, claimPendingMt5Orders, listAllMt5Orders, listPendingMt5Orders } from "./execution/mt5Bridge.js";
 import { sendAlert } from "./notify/alert.js";
+import { explainMt5Retcode } from "./notify/mt5Retcodes.js";
 import { getRuntimeConfig, setRuntimeConfig } from "./runtime/config.js";
 
 const app = express();
