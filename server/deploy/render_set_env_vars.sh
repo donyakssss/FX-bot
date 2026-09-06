@@ -14,7 +14,7 @@ API_URL="https://api.render.com/v1/services/$SERVICE_ID/env"
 read -r -d '' PAYLOAD <<'JSON'
 {
   "envVars": [
-    {"key":"MT5_SHARED_SECRET","value":"replace_with_secret","secure":true},
+    {"key":"MT5_SHARED_SECRET","value":"fcaf3038a41244c19535fa08e18ce8966452","secure":true},
     {"key":"ENABLE_AUTO_EXECUTION","value":"false","secure":false},
     {"key":"BROKER","value":"mt5","secure":false},
     {"key":"MT5_MIN_LOT","value":"0.01","secure":false},
