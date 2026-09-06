@@ -1,0 +1,1 @@
+{"market":"forex","symbol":"EURUSD","timeframe":"M15","tradeMode":"day","risk":{"accountBalance":10000,"riskPercent":5},"execution":{"dryRun":true}}

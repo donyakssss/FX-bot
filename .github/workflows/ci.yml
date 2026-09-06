@@ -27,5 +27,8 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Run lightweight unit tests
+        run: npm run test
+
       - name: Run dry-run test
         run: npm run dry-run

@@ -5,6 +5,8 @@ import {
   analyzeLive,
   connectLiveSocket,
   getInstruments,
+  getRuntimeConfig,
+  setRuntimeConfig,
   API_BASE_IS_INSECURE,
   type ExecutionPreferences,
   type Instrument,
@@ -65,6 +67,7 @@ export default function App() {
   const [stats, setStats] = useState<JournalStats | null>(null);
   const [recentTrades, setRecentTrades] = useState<TradeRecord[]>([]);
   const [automation, setAutomation] = useState<{ enabled: boolean; broker: string } | null>(null);
+  const [runtimeAutoExecution, setRuntimeAutoExecution] = useState<boolean | null>(null);
   const [oneTapEntry, setOneTapEntry] = useState(true);
   const [significantShiftOnly, setSignificantShiftOnly] = useState(true);
 
@@ -211,6 +214,7 @@ export default function App() {
       void getJournalStats().then(setStats).catch(() => undefined);
       void getRecentTrades().then(setRecentTrades).catch(() => undefined);
       void getAutomationStatus().then(setAutomation).catch(() => undefined);
+      void getRuntimeConfig().then((c) => setRuntimeAutoExecution(c.enableAutoExecution)).catch(() => undefined);
     };
 
     loadJournal();
@@ -459,6 +463,23 @@ export default function App() {
               onChange={(e) => setOneTapEntry(e.target.checked)}
             />
             One-Tap Market Entry (instant execution)
+          </label>
+
+          <label className="toggle-row">
+            <input
+              type="checkbox"
+              checked={runtimeAutoExecution ?? false}
+              onChange={async (e) => {
+                const next = e.target.checked;
+                try {
+                  await setRuntimeConfig({ enableAutoExecution: next });
+                  setRuntimeAutoExecution(next);
+                } catch (err) {
+                  setError((err as Error).message);
+                }
+              }}
+            />
+            Enable Auto-Execution (server)
           </label>
 
           <label className="toggle-row">

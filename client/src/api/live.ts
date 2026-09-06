@@ -153,3 +153,16 @@ export function connectLiveSocket(): Socket {
     transports: ["websocket", "polling"]
   });
 }
+
+export async function getRuntimeConfig(): Promise<{ enableAutoExecution: boolean }> {
+  const r = await fetch(`${API_BASE}/api/config`);
+  if (!r.ok) throw new Error("Failed to load config");
+  const body = await r.json();
+  return body.config;
+}
+
+export async function setRuntimeConfig(next: { enableAutoExecution: boolean }) {
+  const r = await fetch(`${API_BASE}/api/config`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(next) });
+  if (!r.ok) throw new Error("Failed to update config");
+  return r.json();
+}

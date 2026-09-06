@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import type { ExecutionPreferences } from "../types/contracts.js";
 import type { SignalPayload } from "../types/journal.js";
 import { enqueueMt5Order, listAllMt5Orders, type Mt5QueuedOrder } from "./mt5Bridge.js";
+import { sendAlert } from "../notify/alert.js";
 
 type BrokerType = "paper" | "binance" | "mt5";
 
@@ -190,6 +191,10 @@ const executeMt5 = async (payload: SignalPayload, prefs: Required<ExecutionPrefe
     }
 
     const queued = enqueueMt5Order(order);
+    if (queued.status === "REJECTED") {
+      void sendAlert({ title: "MT5 Enqueue Rejected", text: `One-tap order for ${payload.snapshot.symbol} rejected: ${queued.note}`, meta: queued });
+    }
+
     return {
       executed: queued.id === orderId,
       broker: "mt5",
@@ -235,6 +240,9 @@ const executeMt5 = async (payload: SignalPayload, prefs: Required<ExecutionPrefe
 
     const queued = enqueueMt5Order(order);
     queuedResults.push(queued);
+    if (queued.status === "REJECTED") {
+      void sendAlert({ title: "MT5 Enqueue Rejected", text: `Queued layer order for ${payload.snapshot.symbol} rejected: ${queued.note}`, meta: queued });
+    }
   }
 
   if (prefs.dryRun) {

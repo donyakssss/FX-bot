@@ -13,6 +13,8 @@ import { getNewsBlockDecision, getUpcomingEconomicEvents } from "./market/econom
 import { getStats, listTrades, recordSignalTrade, resetJournal, resolveOpenTrades } from "./journal/tradeJournal.js";
 import { executeSignalOrder, isAutoExecutionEnabled } from "./execution/executor.js";
 import { ackMt5Order, claimPendingMt5Orders, listAllMt5Orders, listPendingMt5Orders } from "./execution/mt5Bridge.js";
+import { sendAlert } from "./notify/alert.js";
+import { getRuntimeConfig, setRuntimeConfig } from "./runtime/config.js";
 
 const app = express();
 const port = process.env.PORT ?? 4000;
@@ -57,6 +59,16 @@ app.get("/api/health", (_req, res) => {
 
 app.get("/api/instruments", (_req, res) => {
   res.json({ instruments: INSTRUMENTS });
+});
+
+app.get("/api/config", (_req, res) => {
+  return res.json({ config: getRuntimeConfig() });
+});
+
+app.post("/api/config", (req, res) => {
+  const body = req.body as { enableAutoExecution?: boolean };
+  const updated = setRuntimeConfig({ enableAutoExecution: body.enableAutoExecution });
+  return res.json({ config: updated });
 });
 
 app.get("/api/fundamentals/calendar", async (req, res) => {
@@ -410,6 +422,11 @@ app.post("/api/mt5/orders/ack", (req, res) => {
   const updated = ackMt5Order(body.id, body.status, body.ticket, body.note);
   if (!updated) {
     return res.status(404).json({ error: "Order not found." });
+  }
+
+  // send alert for rejected orders
+  if (body.status === "REJECTED") {
+    void sendAlert({ title: "MT5 Order Rejected", text: `Order ${body.id} was rejected. Note: ${body.note ?? "(none)"}`, meta: updated });
   }
 
   return res.json({ order: updated });

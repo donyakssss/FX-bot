@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
+    "test": "tsx src/scripts/run_tests.ts",
     "dry-run": "tsx src/scripts/dry_run_test.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js"
