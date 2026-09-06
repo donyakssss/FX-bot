@@ -16,6 +16,7 @@ export type LiveAnalyzeRequest = {
   market: MarketType;
   symbol: string;
   timeframe: Timeframe;
+  strategy?: string;
   tradeMode?: "scalp" | "day" | "swing" | "position";
   risk: {
     accountBalance: number;
