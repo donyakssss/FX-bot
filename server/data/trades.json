@@ -15,5 +15,43 @@
     "openedAt": "2026-07-14T14:21:33.972Z",
     "status": "OPEN",
     "source": "signal"
+  },
+  {
+    "id": "69db31cb-030e-40e2-a0b9-080698d941a8",
+    "market": "crypto",
+    "symbol": "BTCUSDT",
+    "timeframe": "M5",
+    "tradeMode": "day",
+    "direction": "BUY",
+    "signalQuality": "MEDIUM",
+    "entry": 64164.135,
+    "stopLoss": 64004,
+    "takeProfit": 64516.432,
+    "riskAmount": 50,
+    "lotSize": 0,
+    "openedAt": "2026-07-18T13:00:05.987Z",
+    "status": "LOST",
+    "source": "signal",
+    "closedAt": "2026-07-18T13:18:26.376Z",
+    "closePrice": 64004,
+    "pnlAmount": -50,
+    "pnlR": -1
+  },
+  {
+    "id": "f2a5bef0-0337-45c3-af22-eb4e4f1e9297",
+    "market": "crypto",
+    "symbol": "BTCUSDT",
+    "timeframe": "M5",
+    "tradeMode": "swing",
+    "direction": "SELL",
+    "signalQuality": "MEDIUM",
+    "entry": 64058.5,
+    "stopLoss": 64274.47,
+    "takeProfit": 63367.396,
+    "riskAmount": 50,
+    "lotSize": 0,
+    "openedAt": "2026-07-18T13:15:26.075Z",
+    "status": "OPEN",
+    "source": "signal"
   }
 ]

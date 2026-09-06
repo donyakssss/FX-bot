@@ -90,6 +90,23 @@ export default function LiveChart({ candles, analysis }: Props) {
       return;
     }
 
+    // render annotations (support/resistance and notes)
+    const annotations = (analysis.annotations ?? []) as Array<{ type: string; price: number; label?: string }>;
+    for (const ann of annotations) {
+      const color = ann.type === "SUPPORT" ? "#7fdbca" : ann.type === "RESISTANCE" ? "#b388eb" : ann.type === "NOTE" ? "#f2c94c" : "#9bd1ff";
+      const style = ann.type === "SUPPORT" || ann.type === "RESISTANCE" ? 1 : 2;
+      priceLinesRef.current.push(
+        seriesRef.current.createPriceLine({
+          price: ann.price,
+          color,
+          lineWidth: 1,
+          lineStyle: style,
+          axisLabelVisible: true,
+          title: ann.label ?? ann.type
+        })
+      );
+    }
+
     priceLinesRef.current.push(
       seriesRef.current.createPriceLine({
         price: analysis.entry,

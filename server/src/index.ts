@@ -2,12 +2,14 @@ import cors from "cors";
 import express from "express";
 import { createServer } from "node:http";
 import { Server } from "socket.io";
-import { analyzeSetup } from "./strategy/smcCrtStrategy.js";
+import { analyzeSetup } from "./strategy/index.js";
 import { validateRiskParams, computePositionSizing } from "./risk/riskManager.js";
-import type { AnalyzeRequest } from "./types/contracts.js";
+import type { AnalyzeRequest, ExecutionPreferences } from "./types/contracts.js";
 import type { LiveAnalyzeRequest, MarketType, Timeframe } from "./types/market.js";
 import { INSTRUMENTS, findInstrument } from "./market/catalog.js";
 import { getMarketCandles } from "./market/service.js";
+import { getFundamentalContext } from "./market/fundamentals.js";
+import { getNewsBlockDecision, getUpcomingEconomicEvents } from "./market/economicCalendar.js";
 import { getStats, listTrades, recordSignalTrade, resetJournal, resolveOpenTrades } from "./journal/tradeJournal.js";
 import { executeSignalOrder, isAutoExecutionEnabled } from "./execution/executor.js";
 import { ackMt5Order, claimPendingMt5Orders, listAllMt5Orders, listPendingMt5Orders } from "./execution/mt5Bridge.js";
@@ -18,6 +20,10 @@ const marketPollIntervalMs = Number(process.env.MARKET_POLL_INTERVAL_MS ?? 15000
 const watchlistPollIntervalMs = Number(process.env.WATCHLIST_POLL_INTERVAL_MS ?? 30000);
 const backgroundAutotradeEnabled = process.env.BACKGROUND_AUTOTRADE_ENABLED === "true";
 const backgroundPollIntervalMs = Number(process.env.BACKGROUND_POLL_INTERVAL_MS ?? 20000);
+const oneTapEntryDefault = process.env.ONE_TAP_ENTRY_DEFAULT !== "false";
+const enableTrailingDefault = process.env.ENABLE_TRAILING_DEFAULT !== "false";
+const moveSlToBreakevenDefault = process.env.MOVE_SL_TO_BREAKEVEN_DEFAULT !== "false";
+const significantShiftOnlyDefault = process.env.SIGNIFICANT_SHIFT_ONLY_DEFAULT !== "false";
 const executedSignalKeys = new Set<string>();
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
@@ -51,6 +57,36 @@ app.get("/api/health", (_req, res) => {
 
 app.get("/api/instruments", (_req, res) => {
   res.json({ instruments: INSTRUMENTS });
+});
+
+app.get("/api/fundamentals/calendar", async (req, res) => {
+  const market = String(req.query.market ?? "") as MarketType;
+  const symbol = String(req.query.symbol ?? "").trim();
+  const horizonHours = Number(req.query.horizonHours ?? 24);
+
+  if (!findInstrument(market, symbol)) {
+    return res.status(400).json({ error: "Unsupported market/symbol selection." });
+  }
+
+  const events = await getUpcomingEconomicEvents({
+    market,
+    symbol,
+    horizonHours: Number.isFinite(horizonHours) ? Math.max(1, Math.min(168, horizonHours)) : 24
+  });
+
+  return res.json({ market, symbol, events, updatedAt: new Date().toISOString() });
+});
+
+app.get("/api/fundamentals/news-block", async (req, res) => {
+  const market = String(req.query.market ?? "") as MarketType;
+  const symbol = String(req.query.symbol ?? "").trim();
+
+  if (!findInstrument(market, symbol)) {
+    return res.status(400).json({ error: "Unsupported market/symbol selection." });
+  }
+
+  const decision = await getNewsBlockDecision({ market, symbol });
+  return res.json({ market, symbol, decision, checkedAt: new Date().toISOString() });
 });
 
 app.get("/api/journal/trades", (_req, res) => {
@@ -89,10 +125,10 @@ app.get("/api/mt5/trailing-rules", (req, res) => {
   }
 
   return res.json({
-    scalp: { breakEvenR: 0.8, trailStartR: 1.2, trailStepR: 0.6 },
-    day: { breakEvenR: 1.0, trailStartR: 1.6, trailStepR: 0.9 },
-    swing: { breakEvenR: 1.2, trailStartR: 1.8, trailStepR: 1.0 },
-    position: { breakEvenR: 1.4, trailStartR: 2.2, trailStepR: 1.2 }
+    scalp: { breakEvenR: 1.0, trailStartR: 1.4, trailStepR: 0.75 },
+    day: { breakEvenR: 1.15, trailStartR: 1.8, trailStepR: 1.0 },
+    swing: { breakEvenR: 1.35, trailStartR: 2.1, trailStepR: 1.2 },
+    position: { breakEvenR: 1.6, trailStartR: 2.6, trailStepR: 1.4 }
   });
 });
 
@@ -119,6 +155,15 @@ const validateLiveInstrument = (
   return { ok: true };
 };
 
+const resolveExecutionPreferences = (
+  incoming?: ExecutionPreferences
+): Required<ExecutionPreferences> => ({
+  oneTapEntry: incoming?.oneTapEntry ?? oneTapEntryDefault,
+  enableTrailing: incoming?.enableTrailing ?? enableTrailingDefault,
+  moveSlToBreakeven: incoming?.moveSlToBreakeven ?? moveSlToBreakevenDefault,
+  significantShiftOnly: incoming?.significantShiftOnly ?? significantShiftOnlyDefault
+});
+
 type BackgroundTarget = {
   market: MarketType;
   symbol: string;
@@ -143,7 +188,7 @@ const readBackgroundTargets = (): BackgroundTarget[] => {
   const timeframe = (process.env.BACKGROUND_TIMEFRAME ?? "M15") as Timeframe;
   const tradeMode = (process.env.BACKGROUND_TRADE_MODE ?? "day") as "scalp" | "day" | "swing" | "position";
   const accountBalance = Number(process.env.BACKGROUND_ACCOUNT_BALANCE ?? 5000);
-  const riskPercent = Number(process.env.BACKGROUND_RISK_PERCENT ?? 1);
+  const riskPercent = Number(process.env.BACKGROUND_RISK_PERCENT ?? 5);
 
   const fromJson = process.env.BACKGROUND_TARGETS_JSON;
   if (fromJson) {
@@ -243,6 +288,7 @@ const runBackgroundAutotrade = (): void => {
           timeframe: target.timeframe,
           tradeMode: target.tradeMode,
           candles,
+          fundamentals: await getFundamentalContext(target.market, target.symbol),
           risk: { accountBalance: target.accountBalance, riskPercent: target.riskPercent },
           quoteCurrency: "USD"
         });
@@ -272,7 +318,13 @@ const runBackgroundAutotrade = (): void => {
         const signalKey = `background:${target.market}:${target.symbol}:${target.timeframe}:${setup.appliedMode}:${setup.direction}:${setup.entry}`;
 
         if (setup.direction !== "NEUTRAL" && !executedSignalKeys.has(signalKey)) {
-          const execution = await executeSignalOrder(signalPayload);
+          const newsBlock = await getNewsBlockDecision({ market: target.market, symbol: target.symbol });
+          if (newsBlock.blocked) {
+            recordSignalTrade(signalPayload, "signal");
+            continue;
+          }
+
+          const execution = await executeSignalOrder(signalPayload, resolveExecutionPreferences());
           if (execution.executed) {
             executedSignalKeys.add(signalKey);
             recordSignalTrade(signalPayload, "auto-execution");
@@ -421,6 +473,7 @@ app.post("/api/analyze-live", async (req, res) => {
       timeframe: body.timeframe,
       tradeMode: body.tradeMode,
       candles,
+      fundamentals: await getFundamentalContext(body.market, body.symbol),
       risk: body.risk,
       quoteCurrency: "USD"
     });
@@ -445,11 +498,15 @@ app.post("/api/analyze-live", async (req, res) => {
       risk: sizing,
       updatedAt: new Date().toISOString()
     };
+    const newsBlock = await getNewsBlockDecision({ market: body.market, symbol: body.symbol });
     resolveOpenTrades(signalPayload);
     recordSignalTrade(signalPayload, "signal");
 
     return res.json({
       ...signalPayload,
+      riskControls: {
+        newsBlock
+      },
       meta: {
         model: "ICT-inspired SMC/CRT engine",
         note: "No trading system can guarantee 100% accuracy. Always validate and manage risk."
@@ -496,6 +553,125 @@ app.post("/api/analyze", (req, res) => {
   });
 });
 
+app.post("/api/annotations", (req, res) => {
+  const body = req.body as AnalyzeRequest;
+  if (!body || !Array.isArray(body.candles) || body.candles.length < 20) {
+    return res.status(400).json({ error: "Provide at least 20 candles for annotations." });
+  }
+
+  try {
+    const setup = analyzeSetup(body);
+
+    const candles = body.candles;
+    const prices = candles.flatMap((c) => [c.high, c.low, c.open, c.close]);
+    const minP = Math.min(...prices);
+    const maxP = Math.max(...prices);
+    const width = 1200;
+    const height = 480;
+
+    const yForPrice = (p: number) => {
+      const pct = (p - minP) / (maxP - minP || 1);
+      return Math.round(height - pct * height);
+    };
+
+    // prepare candle drawing
+    const padLeft = 60;
+    const padRight = 20;
+    const chartW = width - padLeft - padRight;
+    const step = chartW / Math.max(1, candles.length - 1);
+
+    const candleElems: string[] = [];
+    for (let i = 0; i < candles.length; i++) {
+      const c = candles[i];
+      const x = padLeft + Math.round(i * step);
+      const yHigh = yForPrice(c.high);
+      const yLow = yForPrice(c.low);
+      const yOpen = yForPrice(c.open);
+      const yClose = yForPrice(c.close);
+      const up = c.close >= c.open;
+      const color = up ? "#39c98a" : "#f65f60";
+      const wick = `<line x1="${x}" y1="${yHigh}" x2="${x}" y2="${yLow}" stroke="${color}" stroke-width="1" />`;
+      const bodyTop = Math.min(yOpen, yClose);
+      const bodyBottom = Math.max(yOpen, yClose);
+      const bodyH = Math.max(1, bodyBottom - bodyTop);
+      const body = `<rect x="${x - step * 0.35}" y="${bodyTop}" width="${Math.max(2, step * 0.7)}" height="${bodyH}" fill="${color}" />`;
+      candleElems.push(wick);
+      candleElems.push(body);
+    }
+
+    const annotationElems: string[] = [];
+    for (const a of (setup.annotations ?? [])) {
+      const y = yForPrice(a.price);
+      const color = a.type === "SUPPORT" ? "#7fdbca" : a.type === "RESISTANCE" ? "#b388eb" : a.type === "NOTE" ? "#f2c94c" : "#9bd1ff";
+      annotationElems.push(`<g><line x1="${padLeft}" y1="${y}" x2="${width - padRight}" y2="${y}" stroke="${color}" stroke-width="2" stroke-dasharray="6,4" /><text x="${padLeft + 6}" y="${y - 8}" fill="${color}" font-size="14">${(a.label ?? a.type) + ' ' + a.price.toFixed(5)}</text></g>`);
+    }
+
+    // time axis ticks
+    const tickCount = Math.min(10, Math.max(3, Math.floor(candles.length / 6)));
+    const tickStep = Math.max(1, Math.floor((candles.length - 1) / (tickCount - 1)));
+    const ticks: string[] = [];
+    for (let i = 0; i < candles.length; i += tickStep) {
+      const x = padLeft + Math.round(i * step);
+      const t = new Date(candles[i].time).toISOString().replace(/T/, ' ').replace(/Z/, '');
+      ticks.push(`<g><line x1="${x}" y1="${height - 36}" x2="${x}" y2="${height - 32}" stroke="#436879" stroke-width="1" /><text x="${x - 28}" y="${height - 14}" fill="#9fbfcd" font-size="12">${t}</text></g>`);
+    }
+
+    // price axis labels (6 divisions)
+    const priceLabels: string[] = [];
+    const divisions = 6;
+    for (let i = 0; i <= divisions; i++) {
+      const p = minP + ((maxP - minP) * i) / divisions;
+      const y = yForPrice(p);
+      priceLabels.push(`<g><text x="${width - padRight + 6}" y="${y + 4}" fill="#9fbfcd" font-size="12">${p.toFixed(5)}</text></g>`);
+    }
+
+    // legend box
+    const legendX = padLeft + 8;
+    const legendY = 8;
+    const legendLines: string[] = [];
+    legendLines.push(`${setup.strategyVersion}`);
+    legendLines.push(`Dir: ${setup.direction}  Q: ${setup.signalQuality}`);
+    legendLines.push(`RR: ${setup.rr}  Conf: ${setup.confidence}`);
+    if (setup.futureEntries && setup.futureEntries.length > 0) {
+      legendLines.push(`Allocations: ${setup.futureEntries.map((f) => f.allocationPercent + '%').join(', ')}`);
+    }
+
+    const legendElems = [`<rect x="${legendX - 6}" y="${legendY - 14}" width="320" height="${12 * legendLines.length + 12}" rx="6" fill="rgba(10,20,26,0.6)" stroke="#234" />`];
+    for (let i = 0; i < legendLines.length; i++) {
+      legendElems.push(`<text x="${legendX}" y="${legendY + i * 14}" fill="#d7ebf9" font-size="12">${legendLines[i]}</text>`);
+    }
+
+    const svg = `<?xml version="1.0" encoding="UTF-8"?>
+      <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+        <rect width="100%" height="100%" fill="#07121a" />
+        <g>${candleElems.join("\n")}</g>
+        <g>${annotationElems.join("\n")}</g>
+        <g>${ticks.join("\n")}</g>
+        <g>${priceLabels.join("\n")}</g>
+        <g>${legendElems.join("\n")}</g>
+      </svg>`;
+
+    const want = String(req.query.format ?? "svg").toLowerCase();
+    if (want === "png") {
+      try {
+        const sharp = await import("sharp");
+        const buf = await sharp.default(Buffer.from(svg)).png().toBuffer();
+        res.setHeader("Content-Type", "image/png");
+        return res.status(200).send(buf);
+      } catch (err) {
+        // fallback to svg if sharp not available or conversion failed
+        res.setHeader("Content-Type", "image/svg+xml");
+        return res.status(200).send(svg);
+      }
+    }
+
+    res.setHeader("Content-Type", "image/svg+xml");
+    return res.status(200).send(svg);
+  } catch (error) {
+    return res.status(400).json({ error: (error as Error).message });
+  }
+});
+
 io.on("connection", (socket) => {
   let marketTimer: NodeJS.Timeout | undefined;
   let watchlistTimer: NodeJS.Timeout | undefined;
@@ -508,6 +684,7 @@ io.on("connection", (socket) => {
       timeframe: Timeframe;
       tradeMode?: "scalp" | "day" | "swing" | "position";
       risk: { accountBalance: number; riskPercent: number };
+      execution?: ExecutionPreferences;
     }) => {
       if (marketTimer) {
         clearInterval(marketTimer);
@@ -538,6 +715,7 @@ io.on("connection", (socket) => {
             timeframe: payload.timeframe,
             tradeMode: payload.tradeMode,
             candles,
+            fundamentals: await getFundamentalContext(payload.market, payload.symbol),
             risk: payload.risk,
             quoteCurrency: "USD"
           });
@@ -565,38 +743,38 @@ io.on("connection", (socket) => {
 
           resolveOpenTrades(signalPayload);
 
-         const signalKey = `${payload.market}:${payload.symbol}:${payload.timeframe}:${setup.appliedMode}:${setup.direction}:${setup.entry}`;
+          const signalKey = `${payload.market}:${payload.symbol}:${payload.timeframe}:${setup.appliedMode}:${setup.direction}:${setup.entry}`;
+          const executionPrefs = resolveExecutionPreferences(payload.execution);
 
-console.log("==================================");
-console.log("Already Executed:", executedSignalKeys.has(signalKey));
-console.log("==================================");
-console.log("Signal Quality:", setup.signalQuality);
-console.log("Direction:", setup.direction);
-console.log("Future Entries:", setup.futureEntries.length);
+          if (setup.direction !== "NEUTRAL" && !executedSignalKeys.has(signalKey)) {
+            const newsBlock = await getNewsBlockDecision({ market: payload.market, symbol: payload.symbol });
+            if (newsBlock.blocked) {
+              const message = newsBlock.reason ?? "Execution blocked by high-impact economic event window.";
+              socket.emit("execution:update", {
+                executed: false,
+                broker: process.env.BROKER ?? "paper",
+                message
+              });
+              recordSignalTrade(signalPayload, "signal");
+              socket.emit("market:update", {
+                ...signalPayload,
+                riskControls: { newsBlock }
+              });
+              return;
+            }
 
-if (setup.direction !== "NEUTRAL" &&
-    !executedSignalKeys.has(signalKey)) {
-    console.log("AUTO EXECUTION STARTED");
+            const execution = await executeSignalOrder(signalPayload, executionPrefs);
+            socket.emit("execution:update", execution);
 
-    const execution = await executeSignalOrder(signalPayload);
-
-    console.log("========== EXECUTION RESULT ==========");
-console.log("Executed:", execution.executed);
-console.log("Broker:", execution.broker);
-console.log("Message:", execution.message);
-console.log("======================================");
-
-    if (execution.executed) {
-        executedSignalKeys.add(signalKey);
-        recordSignalTrade(signalPayload, "auto-execution");
-        socket.emit("execution:update", execution);
-    } else {
-        socket.emit("execution:update", execution);
-        recordSignalTrade(signalPayload, "signal");
-    }
-} else {
-    recordSignalTrade(signalPayload, "signal");
-}
+            if (execution.executed) {
+              executedSignalKeys.add(signalKey);
+              recordSignalTrade(signalPayload, "auto-execution");
+            } else {
+              recordSignalTrade(signalPayload, "signal");
+            }
+          } else {
+            recordSignalTrade(signalPayload, "signal");
+          }
 
           socket.emit("market:update", signalPayload);
         } catch (error) {
@@ -663,6 +841,7 @@ console.log("======================================");
               timeframe: item.timeframe,
               tradeMode: payload.tradeMode,
               candles,
+              fundamentals: await getFundamentalContext(item.market, item.symbol),
               risk: payload.risk,
               quoteCurrency: "USD"
             });

@@ -5,6 +5,14 @@ export type MarketType = "forex" | "crypto" | "indices" | "metals" | "synthetics
 export type Timeframe = "M1" | "M5" | "M15" | "M30" | "H1" | "H4" | "D1";
 export type TradeMode = "scalp" | "day" | "swing" | "position";
 
+export type ExecutionPreferences = {
+  oneTapEntry?: boolean;
+  enableTrailing?: boolean;
+  moveSlToBreakeven?: boolean;
+  significantShiftOnly?: boolean;
+  dryRun?: boolean;
+};
+
 export type Candle = {
   time: string;
   open: number;
@@ -37,9 +45,32 @@ export type LiveUpdate = {
     rr: number;
     confidence: number;
     signalQuality: "LOW" | "MEDIUM" | "HIGH" | "PERFECT";
+    marketShift: {
+      significant: boolean;
+      score: number;
+      displacementRatio: number;
+      trendStrength: number;
+      volatilityExpansion: number;
+      reasons: string[];
+    };
+    strategyVersion: string;
+    fundamentals?: {
+      symbol: string;
+      market: MarketType;
+      sentimentScore: number;
+      impact: "LOW" | "MEDIUM" | "HIGH";
+      updatedAt: string;
+      headlines: Array<{
+        title: string;
+        source: string;
+        url: string;
+        publishedAt: string;
+        sentiment: "bullish" | "bearish" | "neutral";
+      }>;
+    };
     reasons: string[];
     futureEntries: Array<{
-      orderType: "BUY_LIMIT" | "SELL_LIMIT";
+      orderType: "BUY_LIMIT" | "SELL_LIMIT" | "BUY_STOP" | "SELL_STOP" | "BUY_MARKET" | "SELL_MARKET";
       entry: number;
       stopLoss: number;
       takeProfit: number;
@@ -48,12 +79,32 @@ export type LiveUpdate = {
       expectedHold: string;
       rationale: string;
     }>;
+    annotations?: Array<{ type: "SUPPORT" | "RESISTANCE" | "ENTRY" | "SL" | "TP" | "LIMIT" | "NOTE"; price: number; label?: string }>;
   };
   risk: {
     riskAmount: number;
     stopDistancePips: number;
     lotSize: number;
     warnings: string[];
+  };
+  riskControls?: {
+    newsBlock: {
+      blocked: boolean;
+      reason?: string;
+      minutesToEvent?: number;
+      window: {
+        preMinutes: number;
+        postMinutes: number;
+      };
+      event?: {
+        title: string;
+        currency: string;
+        impact: "LOW" | "MEDIUM" | "HIGH";
+        scheduledAt: string;
+        source: string;
+        country?: string;
+      };
+    };
   };
   updatedAt: string;
 };
@@ -77,6 +128,7 @@ export async function analyzeLive(payload: {
   timeframe: Timeframe;
   tradeMode: TradeMode;
   risk: { accountBalance: number; riskPercent: number };
+  execution?: ExecutionPreferences;
 }): Promise<LiveUpdate> {
   const response = await fetch(`${API_BASE}/api/analyze-live`, {
     method: "POST",

@@ -1,4 +1,13 @@
-import type { AnalyzeRequest, Candle, FutureEntry, SignalQuality, TradeDirection, TradeMode, TradeSetup } from "../types/contracts.js";
+import type {
+  AnalyzeRequest,
+  Candle,
+  FutureEntry,
+  MarketShiftAssessment,
+  SignalQuality,
+  TradeDirection,
+  TradeMode,
+  TradeSetup
+} from "../types/contracts.js";
 
 const round = (value: number, digits = 5): number => Number(value.toFixed(digits));
 
@@ -45,6 +54,54 @@ const detectDirection = (candles: Candle[]): TradeDirection => {
   return "NEUTRAL";
 };
 
+const clamp = (value: number, min: number, max: number): number => Math.max(min, Math.min(max, value));
+
+const evaluateMarketShift = (
+  candles: Candle[],
+  avgRange: number,
+  mode: TradeMode,
+  direction: TradeDirection
+): MarketShiftAssessment => {
+  const latest = candles[candles.length - 1];
+  const previous = candles[candles.length - 2];
+  const ranges = candles.slice(-12).map(getRange);
+  const recentRange = avg(ranges.slice(-6));
+  const previousRange = avg(ranges.slice(0, 6));
+
+  const displacementRatio = Math.abs(latest.close - previous.close) / Math.max(avgRange, Number.EPSILON);
+  const trendStrengthRaw = Math.abs(latest.close - candles[candles.length - 12].close) / Math.max(avgRange * 3, Number.EPSILON);
+  const trendStrength = clamp(trendStrengthRaw, 0, 2);
+  const volatilityExpansion = previousRange > 0 ? recentRange / previousRange : 1;
+
+  const modeBias = mode === "scalp" ? 0.95 : mode === "day" ? 1.0 : mode === "swing" ? 1.08 : 1.15;
+  const scoreRaw = displacementRatio * 0.5 + trendStrength * 0.3 + Math.max(0, volatilityExpansion - 1) * 0.2;
+  const score = Number((scoreRaw * modeBias).toFixed(2));
+  const significant = direction !== "NEUTRAL" && displacementRatio >= 0.8 && score >= 1.05;
+
+  const reasons: string[] = [];
+  if (displacementRatio >= 0.8) {
+    reasons.push("Strong displacement from the prior close");
+  }
+  if (volatilityExpansion >= 1.12) {
+    reasons.push("Volatility expansion confirms regime change");
+  }
+  if (trendStrength >= 0.95) {
+    reasons.push("Directional momentum strengthened across recent candles");
+  }
+  if (reasons.length === 0) {
+    reasons.push("No structural expansion yet; waiting for clearer market shift");
+  }
+
+  return {
+    significant,
+    score,
+    displacementRatio: Number(displacementRatio.toFixed(2)),
+    trendStrength: Number(trendStrength.toFixed(2)),
+    volatilityExpansion: Number(volatilityExpansion.toFixed(2)),
+    reasons
+  };
+};
+
 export const analyzeSetup = (request: AnalyzeRequest): TradeSetup => {
   const candles = request.candles;
   const latest = candles[candles.length - 1];
@@ -80,11 +137,17 @@ export const analyzeSetup = (request: AnalyzeRequest): TradeSetup => {
   const firstHalf = structureWindow.slice(0, Math.floor(structureWindow.length / 2));
   const secondHalf = structureWindow.slice(Math.floor(structureWindow.length / 2));
   const rangeCompression = avg(firstHalf.map(getRange)) < avg(secondHalf.map(getRange));
+  const marketShift = evaluateMarketShift(candles, avgRange, appliedMode, direction);
 
   const reasons: string[] = [];
   if (crtExpansion) reasons.push("CRT expansion detected (strong displacement candle)");
   if (rangeCompression) reasons.push("CRT range shift indicates momentum transition");
   reasons.push(`Mode: ${appliedMode.toUpperCase()} analysis profile active`);
+  reasons.push(
+    marketShift.significant
+      ? `Significant shift confirmed (score ${marketShift.score})`
+      : `Shift not yet significant (score ${marketShift.score}); patience favored`
+  );
 
   let entry = latest.close;
   let stopLoss = latest.low;
@@ -157,20 +220,41 @@ export const analyzeSetup = (request: AnalyzeRequest): TradeSetup => {
 
   const rrRaw = Math.abs((takeProfit - entry) / (entry - stopLoss || 1));
   const confidenceBase = direction === "NEUTRAL" ? 0.45 : scalpMode ? 0.68 : 0.62;
-  const confidenceBoost = (crtExpansion ? 0.12 : 0) + (rangeCompression ? 0.08 : 0);
-  const confidence = Math.min(0.92, confidenceBase + confidenceBoost);
+  const confidenceBoost =
+    (crtExpansion ? 0.12 : 0) +
+    (rangeCompression ? 0.08 : 0) +
+    (marketShift.significant ? 0.1 : -0.06);
+
+  const fundamentalDirectionalBias =
+    request.fundamentals == null
+      ? 0
+      : request.fundamentals.sentimentScore * (direction === "BUY" ? 1 : direction === "SELL" ? -1 : 0);
+  const fundamentalImpactWeight =
+    request.fundamentals?.impact === "HIGH" ? 0.09 : request.fundamentals?.impact === "MEDIUM" ? 0.05 : 0.02;
+  const fundamentalBoost = fundamentalDirectionalBias * fundamentalImpactWeight;
+
+  const confidence = Math.min(0.95, Math.max(0.35, confidenceBase + confidenceBoost + fundamentalBoost));
   const rr = round(rrRaw, 2);
   const signalQuality: SignalQuality =
   direction !== "NEUTRAL" &&
   confidence >= 0.8 &&
+  marketShift.significant &&
   rr >= (scalpMode ? 1.15 : 2.2) &&
   futureEntries.length >= 3
     ? "PERFECT"
-    : direction !== "NEUTRAL" && confidence >= 0.72 && rr >= 1.8
+    : direction !== "NEUTRAL" && confidence >= 0.72 && rr >= 1.8 && marketShift.score >= 0.95
       ? "HIGH"
       : direction !== "NEUTRAL" && confidence >= 0.62
         ? "MEDIUM"
         : "LOW";
+
+  if (request.fundamentals) {
+    reasons.push(
+      `Fundamentals bias ${request.fundamentals.sentimentScore >= 0 ? "supports" : "opposes"} setup (${request.fundamentals.impact} impact)`
+    );
+  }
+
+  const strategyVersion = `smc-crt-adaptive-${appliedMode}-${marketShift.significant ? "shift" : "range"}-${new Date().toISOString().slice(0, 10)}`;
 
 return {
   appliedMode,
@@ -181,6 +265,9 @@ return {
   rr,
   confidence: round(confidence, 2),
   signalQuality,
+  marketShift,
+  fundamentals: request.fundamentals,
+  strategyVersion,
   reasons,
   futureEntries
 };

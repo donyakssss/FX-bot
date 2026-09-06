@@ -26,8 +26,8 @@ export const validateRiskParams = (
   if (risk.accountBalance <= 0) {
     return { valid: false, message: "Account balance must be greater than 0." };
   }
-  if (risk.riskPercent <= 0 || risk.riskPercent > 5) {
-    return { valid: false, message: "Risk percent must be between 0 and 5." };
+  if (risk.riskPercent < 5 || risk.riskPercent > 100) {
+    return { valid: false, message: "Risk percent must be between 5 and 100." };
   }
   return { valid: true };
 };

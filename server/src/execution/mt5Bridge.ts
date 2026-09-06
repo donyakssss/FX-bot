@@ -16,7 +16,7 @@ export type Mt5QueuedOrder = {
   brokerSymbol: string;
   tradeMode: "scalp" | "day" | "swing" | "position";
   direction: "BUY" | "SELL";
-  orderType: "BUY_LIMIT" | "SELL_LIMIT" | "BUY_STOP" | "SELL_STOP";
+  orderType: "BUY_LIMIT" | "SELL_LIMIT" | "BUY_STOP" | "SELL_STOP" | "BUY_MARKET" | "SELL_MARKET";
   entry: number;
   stopLoss: number;
   takeProfit: number;
@@ -33,6 +33,8 @@ export type Mt5QueuedOrder = {
 const dataDir = join(process.cwd(), "data");
 const filePath = join(dataDir, "mt5-orders.json");
 const claimTtlMs = Number(process.env.MT5_ORDER_CLAIM_TTL_MS ?? 30000);
+
+const cryptoRandomId = (): string => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
 
 const normalizeSymbolKey = (value: string): string => value.replace(/[^a-z0-9]/gi, "").toLowerCase();
 
@@ -94,6 +96,25 @@ const save = (orders: Mt5QueuedOrder[]): void => {
 
 export const enqueueMt5Order = (order: Mt5QueuedOrder): Mt5QueuedOrder => {
   const orders = load();
+
+  // enforce global concurrent trades cap if configured
+  const maxConcurrentRaw = Number(process.env.MAX_CONCURRENT_TRADES ?? 0);
+  if (Number.isFinite(maxConcurrentRaw) && maxConcurrentRaw > 0) {
+    const activeCount = orders.filter((o) => o.status === "PENDING" || o.status === "PROCESSING").length;
+    if (activeCount >= Math.floor(maxConcurrentRaw)) {
+      const blocker: Mt5QueuedOrder = {
+        ...order,
+        id: cryptoRandomId(),
+        status: "REJECTED",
+        note: `Rejected: max concurrent trades (${maxConcurrentRaw}) reached`,
+        createdAt: new Date().toISOString()
+      };
+      // persist rejection note for auditing
+      orders.push(blocker);
+      save(orders);
+      return blocker;
+    }
+  }
 
   const activeSameSymbol = orders.find(
     (item) =>

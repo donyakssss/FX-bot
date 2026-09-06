@@ -1,4 +1,4 @@
-import type { TradeDirection, TradeMode } from "./contracts.js";
+import type { FundamentalContext, MarketShiftAssessment, TradeDirection, TradeMode } from "./contracts.js";
 import type { MarketType, Timeframe } from "./market.js";
 
 export type TradeStatus = "OPEN" | "WON" | "LOST";
@@ -49,8 +49,11 @@ export type SignalPayload = {
     stopLoss: number;
     takeProfit: number;
     signalQuality: "LOW" | "MEDIUM" | "HIGH" | "PERFECT";
+    marketShift: MarketShiftAssessment;
+    fundamentals?: FundamentalContext;
+    strategyVersion: string;
     futureEntries: Array<{
-      orderType: "BUY_LIMIT" | "SELL_LIMIT" | "BUY_STOP" | "SELL_STOP";
+      orderType: "BUY_LIMIT" | "SELL_LIMIT" | "BUY_STOP" | "SELL_STOP" | "BUY_MARKET" | "SELL_MARKET";
       entry: number;
       stopLoss: number;
       takeProfit: number;

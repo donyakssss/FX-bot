@@ -5,11 +5,13 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
+    "dry-run": "tsx src/scripts/dry_run_test.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js"
   },
   "dependencies": {
     "ccxt": "^4.4.95",
+    "sharp": "^0.32.1",
     "cors": "^2.8.5",
     "express": "^4.19.2",
     "socket.io": "^4.8.1",

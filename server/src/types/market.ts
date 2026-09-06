@@ -1,4 +1,5 @@
 import type { Candle } from "./contracts.js";
+import type { ExecutionPreferences } from "./contracts.js";
 
 export type MarketType = "forex" | "crypto" | "indices" | "metals" | "synthetics";
 
@@ -20,6 +21,7 @@ export type LiveAnalyzeRequest = {
     accountBalance: number;
     riskPercent: number;
   };
+  execution?: ExecutionPreferences;
 };
 
 export type MarketSnapshot = {

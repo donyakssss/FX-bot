@@ -9,5 +9,8 @@
     "build": "npm run build --prefix server && npm run build --prefix client",
     "render-build": "npm install --prefix server && npm run build --prefix server",
     "render-start": "npm run start --prefix server"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.3"
   }
 }

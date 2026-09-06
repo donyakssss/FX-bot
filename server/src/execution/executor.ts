@@ -1,5 +1,6 @@
 import ccxt from "ccxt";
 import crypto from "node:crypto";
+import type { ExecutionPreferences } from "../types/contracts.js";
 import type { SignalPayload } from "../types/journal.js";
 import { enqueueMt5Order, listAllMt5Orders, type Mt5QueuedOrder } from "./mt5Bridge.js";
 
@@ -9,12 +10,16 @@ type ExecutionResult = {
   executed: boolean;
   broker: BrokerType;
   message: string;
+  details?: any;
 };
 
-type Mt5OrderType = "BUY_LIMIT" | "SELL_LIMIT" | "BUY_STOP" | "SELL_STOP";
+type Mt5OrderType = "BUY_LIMIT" | "SELL_LIMIT" | "BUY_STOP" | "SELL_STOP" | "BUY_MARKET" | "SELL_MARKET";
 
 const broker = (process.env.BROKER ?? "paper") as BrokerType;
 const autoEnabled = process.env.ENABLE_AUTO_EXECUTION === "true";
+const oneTapEntryDefault = process.env.ONE_TAP_ENTRY_DEFAULT !== "false";
+const enableTrailingDefault = process.env.ENABLE_TRAILING_DEFAULT !== "false";
+const moveSlToBreakevenDefault = process.env.MOVE_SL_TO_BREAKEVEN_DEFAULT !== "false";
 
 const mt5Prefix = process.env.MT5_SYMBOL_PREFIX ?? "";
 const mt5Suffix = process.env.MT5_SYMBOL_SUFFIX ?? "";
@@ -59,16 +64,24 @@ const mapSymbolForMt5 = (symbol: string): string => {
 
 const trailingByMode = (mode: SignalPayload["setup"]["appliedMode"]) => {
   if (mode === "scalp") {
-    return { breakEvenR: 0.8, trailStartR: 1.2, trailStepR: 0.6 };
+    return { breakEvenR: 1.0, trailStartR: 1.4, trailStepR: 0.75 };
   }
   if (mode === "day") {
-    return { breakEvenR: 1.0, trailStartR: 1.6, trailStepR: 0.9 };
+    return { breakEvenR: 1.15, trailStartR: 1.8, trailStepR: 1.0 };
   }
   if (mode === "position") {
-    return { breakEvenR: 1.4, trailStartR: 2.2, trailStepR: 1.2 };
+    return { breakEvenR: 1.6, trailStartR: 2.6, trailStepR: 1.4 };
   }
-  return { breakEvenR: 1.2, trailStartR: 1.8, trailStepR: 1.0 };
+  return { breakEvenR: 1.35, trailStartR: 2.1, trailStepR: 1.2 };
 };
+
+const normalizeExecutionPrefs = (prefs?: ExecutionPreferences): Required<ExecutionPreferences> & { dryRun: boolean } => ({
+  oneTapEntry: prefs?.oneTapEntry ?? oneTapEntryDefault,
+  enableTrailing: prefs?.enableTrailing ?? enableTrailingDefault,
+  moveSlToBreakeven: prefs?.moveSlToBreakeven ?? moveSlToBreakevenDefault,
+  significantShiftOnly: prefs?.significantShiftOnly ?? true,
+  dryRun: prefs?.dryRun ?? false
+});
 
 const signalHash = (payload: SignalPayload, orderType: Mt5OrderType, entry: number): string => {
   const basis = [
@@ -127,7 +140,7 @@ const executeBinance = async (payload: SignalPayload): Promise<ExecutionResult> 
   };
 };
 
-const executeMt5 = async (payload: SignalPayload): Promise<ExecutionResult> => {
+const executeMt5 = async (payload: SignalPayload, prefs: Required<ExecutionPreferences>): Promise<ExecutionResult> => {
   if (
     payload.snapshot.market !== "forex" &&
     payload.snapshot.market !== "metals" &&
@@ -141,119 +154,125 @@ const executeMt5 = async (payload: SignalPayload): Promise<ExecutionResult> => {
     };
   }
 
-  const primaryLimit = payload.setup.futureEntries[0];
-  if (!primaryLimit) {
-    return {
-      executed: false,
-      broker: "mt5",
-      message: "No limit order plan available to queue for MT5."
-    };
-  }
-
-  const orderType: Mt5OrderType = primaryLimit.orderType;
-  const entryPrice = primaryLimit.entry;
-  const stopLoss = primaryLimit.stopLoss;
-  const takeProfit = primaryLimit.takeProfit;
-
   const brokerSymbol = mapSymbolForMt5(payload.snapshot.symbol);
-  const trailing = trailingByMode(payload.setup.appliedMode);
-  const hash = signalHash(payload, orderType, entryPrice);
+  const trailingProfile = trailingByMode(payload.setup.appliedMode);
+  const trailing = {
+    breakEvenR: prefs.enableTrailing && prefs.moveSlToBreakeven ? trailingProfile.breakEvenR : 0,
+    trailStartR: prefs.enableTrailing ? trailingProfile.trailStartR : 0,
+    trailStepR: prefs.enableTrailing ? trailingProfile.trailStepR : 0
+  };
 
-  const orders = listAllMt5Orders();
-  const symbolKey = payload.snapshot.symbol.replace(/[^a-z0-9]/gi, "").toLowerCase();
-  const brokerKey = brokerSymbol.replace(/[^a-z0-9]/gi, "").toLowerCase();
-  const hasActiveSameSymbol = orders.some((item) => {
-    if (item.status === "REJECTED") {
-      return false;
+  // one-tap market order
+  if (prefs.oneTapEntry) {
+    const entryPrice = payload.snapshot.candles[payload.snapshot.candles.length - 1].close;
+    const orderType: Mt5OrderType = payload.setup.direction === "BUY" ? "BUY_MARKET" : "SELL_MARKET";
+    const hash = signalHash(payload, orderType, entryPrice);
+    const orderId = crypto.randomUUID();
+    const order: Mt5QueuedOrder = {
+      id: orderId,
+      signalHash: hash,
+      symbol: payload.snapshot.symbol,
+      brokerSymbol,
+      tradeMode: payload.setup.appliedMode,
+      direction: (payload.setup.direction === "BUY" ? "BUY" : "SELL") as "BUY" | "SELL",
+      orderType,
+      entry: entryPrice,
+      stopLoss: payload.setup.stopLoss,
+      takeProfit: payload.setup.takeProfit,
+      lotSize: Math.max(0.01, Number(payload.risk.lotSize.toFixed(2))),
+      trailing,
+      createdAt: new Date().toISOString(),
+      status: "PENDING"
+    };
+
+    if (prefs.dryRun) {
+      return { executed: false, broker: "mt5", message: "Dry-run: simulated one-tap market order", details: order };
     }
 
-    const itemSymbolKey = item.symbol.replace(/[^a-z0-9]/gi, "").toLowerCase();
-    const itemBrokerKey = item.brokerSymbol.replace(/[^a-z0-9]/gi, "").toLowerCase();
-
-    return (
-      item.tradeMode === payload.setup.appliedMode &&
-      item.direction === (payload.setup.direction === "BUY" ? "BUY" : "SELL") &&
-      (itemSymbolKey === symbolKey || itemBrokerKey === brokerKey || itemSymbolKey === brokerKey || itemBrokerKey === symbolKey)
-    );
-  });
-
-  if (hasActiveSameSymbol) {
+    const queued = enqueueMt5Order(order);
     return {
-      executed: false,
+      executed: queued.id === orderId,
       broker: "mt5",
-      message: `MT5 order skipped for ${payload.snapshot.symbol}: active order already exists for this symbol.`
+      message: queued.id === orderId ? `MT5 order queued for ${payload.snapshot.symbol} -> ${brokerSymbol} (one-tap)` : `MT5 duplicate prevented for ${payload.snapshot.symbol}`
     };
   }
 
- const orderId = crypto.randomUUID();
+  // layered orders (limit/stop) from futureEntries
+  const plans = payload.setup.futureEntries;
+  if (!plans || plans.length === 0) {
+    return { executed: false, broker: "mt5", message: "No future entries available for queuing." };
+  }
 
-const order: Mt5QueuedOrder = {
-  id: orderId,
-  signalHash: hash,
-  symbol: payload.snapshot.symbol,
-  brokerSymbol,
-  tradeMode: payload.setup.appliedMode,
-  direction: (payload.setup.direction === "BUY" ? "BUY" : "SELL") as "BUY" | "SELL",
-  orderType,
-  entry: entryPrice,
-  stopLoss,
-  takeProfit,
-  lotSize: Math.max(0.01, Number(payload.risk.lotSize.toFixed(2))),
-  trailing,
-  createdAt: new Date().toISOString(),
-  status: "PENDING"
+  const simulated: Mt5QueuedOrder[] = [];
+  const queuedResults: Mt5QueuedOrder[] = [];
+
+  for (const plan of plans) {
+    const orderType = plan.orderType as Mt5OrderType;
+    const entryPrice = plan.entry;
+    const orderId = crypto.randomUUID();
+    const allocationLot = Math.max(0.01, Number((payload.risk.lotSize * (plan.allocationPercent / 100)).toFixed(2)));
+    const order: Mt5QueuedOrder = {
+      id: orderId,
+      signalHash: signalHash(payload, orderType, entryPrice),
+      symbol: payload.snapshot.symbol,
+      brokerSymbol,
+      tradeMode: payload.setup.appliedMode,
+      direction: (payload.setup.direction === "BUY" ? "BUY" : "SELL") as "BUY" | "SELL",
+      orderType,
+      entry: entryPrice,
+      stopLoss: plan.stopLoss,
+      takeProfit: plan.takeProfit,
+      lotSize: allocationLot,
+      trailing,
+      createdAt: new Date().toISOString(),
+      status: "PENDING"
+    };
+
+    if (prefs.dryRun) {
+      simulated.push(order);
+      continue;
+    }
+
+    const queued = enqueueMt5Order(order);
+    queuedResults.push(queued);
+  }
+
+  if (prefs.dryRun) {
+    return { executed: false, broker: "mt5", message: `Dry-run: simulated ${simulated.length} queued orders`, details: simulated };
+  }
+
+  return { executed: queuedResults.length > 0, broker: "mt5", message: `Queued ${queuedResults.length} MT5 orders`, details: queuedResults };
 };
 
-console.log("========== QUEUING MT5 ORDER ==========");
-console.log(JSON.stringify(order, null, 2));
+export const executeSignalOrder = async (
+  payload: SignalPayload,
+  prefs?: ExecutionPreferences
+): Promise<ExecutionResult> => {
+  if (!autoEnabled) {
+    return {
+      executed: false,
+      broker,
+      message: "Auto execution is disabled. Set ENABLE_AUTO_EXECUTION=true to enable."
+    };
+  }
 
-console.log("Writing order to mt5-orders.json...");
+  const executionPrefs = normalizeExecutionPrefs(prefs);
 
-const queued = enqueueMt5Order(order);
+  if (executionPrefs.significantShiftOnly && !payload.setup.marketShift.significant) {
+    return {
+      executed: false,
+      broker,
+      message: "Execution skipped: no significant market shift yet."
+    };
+  }
 
-console.log("Queued:", queued);
-console.log("Queue write finished.");
+  if (broker === "binance") {
+    return executeBinance(payload);
+  }
 
-console.log("Queued:", queued);
-console.log("======================================");
-  return {
-    executed: queued.id === orderId,
-    broker: "mt5",
-    message:
-      queued.id === orderId
-        ? `MT5 order queued for ${payload.snapshot.symbol} -> ${brokerSymbol} (${orderType})`
-        : `MT5 duplicate prevented for ${payload.snapshot.symbol}`
-  };
-};
+  if (broker === "mt5") {
+    return executeMt5(payload, executionPrefs);
+  }
 
-export const executeSignalOrder = async (payload: SignalPayload): Promise<ExecutionResult> => {
-    console.log("ENTERED executeSignalOrder");
-    console.log("Broker =", broker);
-    console.log("Auto =", autoEnabled);
-    console.log("Auto Enabled:", autoEnabled);
-console.log("Broker:", broker);
-
-    if (!autoEnabled) {
-        console.log("AUTO DISABLED");
-        return {
-            executed: false,
-            broker,
-            message: "Auto execution is disabled. Set ENABLE_AUTO_EXECUTION=true to enable."
-        };
-    }
-
-    console.log("Passed auto check");
-
-    if (broker === "binance") {
-        console.log("Executing Binance");
-        return executeBinance(payload);
-    }
-
-    if (broker === "mt5") {
-        console.log("Executing MT5");
-        return executeMt5(payload);
-    }
-
-    console.log("Executing Paper");
-    return executePaper(payload);
+  return executePaper(payload);
 };

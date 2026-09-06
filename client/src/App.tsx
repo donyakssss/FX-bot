@@ -6,6 +6,7 @@ import {
   connectLiveSocket,
   getInstruments,
   API_BASE_IS_INSECURE,
+  type ExecutionPreferences,
   type Instrument,
   type LiveUpdate,
   type MarketType,
@@ -64,6 +65,18 @@ export default function App() {
   const [stats, setStats] = useState<JournalStats | null>(null);
   const [recentTrades, setRecentTrades] = useState<TradeRecord[]>([]);
   const [automation, setAutomation] = useState<{ enabled: boolean; broker: string } | null>(null);
+  const [oneTapEntry, setOneTapEntry] = useState(true);
+  const [significantShiftOnly, setSignificantShiftOnly] = useState(true);
+
+  const executionPrefs = useMemo<ExecutionPreferences>(
+    () => ({
+      oneTapEntry,
+      enableTrailing: true,
+      moveSlToBreakeven: true,
+      significantShiftOnly
+    }),
+    [oneTapEntry, significantShiftOnly]
+  );
 
   const marketInstruments = useMemo(
     () => instruments.filter((item) => item.market === market),
@@ -188,9 +201,10 @@ export default function App() {
       risk: {
         accountBalance: balance,
         riskPercent
-      }
+      },
+      execution: executionPrefs
     });
-  }, [connected, autoAnalyze, market, symbol, timeframe, tradeMode, balance, riskPercent, socket]);
+  }, [connected, autoAnalyze, market, symbol, timeframe, tradeMode, balance, riskPercent, executionPrefs, socket]);
 
   useEffect(() => {
     const loadJournal = () => {
@@ -215,7 +229,8 @@ export default function App() {
         risk: {
           accountBalance: balance,
           riskPercent
-        }
+        },
+        execution: executionPrefs
       });
       setResult(first);
 
@@ -435,6 +450,24 @@ export default function App() {
               onChange={(e) => setAutoAnalyze(e.target.checked)}
             />
             Always Analyze While Connected
+          </label>
+
+          <label className="toggle-row">
+            <input
+              type="checkbox"
+              checked={oneTapEntry}
+              onChange={(e) => setOneTapEntry(e.target.checked)}
+            />
+            One-Tap Market Entry (instant execution)
+          </label>
+
+          <label className="toggle-row">
+            <input
+              type="checkbox"
+              checked={significantShiftOnly}
+              onChange={(e) => setSignificantShiftOnly(e.target.checked)}
+            />
+            Execute Only On Significant Market Shift
           </label>
 
           {error && <p className="error">{error}</p>}
