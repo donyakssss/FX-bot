@@ -34,6 +34,21 @@ const dataDir = join(process.cwd(), "data");
 const filePath = join(dataDir, "mt5-orders.json");
 const claimTtlMs = Number(process.env.MT5_ORDER_CLAIM_TTL_MS ?? 30000);
 
+// parse optional symbol map (may be set as single-line JSON)
+const parseSymbolMapEnv = (): Record<string, string> => {
+  try {
+    const raw = process.env.MT5_SYMBOL_MAP_JSON ?? "";
+    if (!raw || raw.trim() === "{}") return {};
+    return JSON.parse(raw) as Record<string, string>;
+  } catch {
+    return {};
+  }
+};
+
+const mt5SymbolMapEnv = parseSymbolMapEnv();
+const mt5Prefix = process.env.MT5_SYMBOL_PREFIX ?? "";
+const mt5Suffix = process.env.MT5_SYMBOL_SUFFIX ?? "";
+
 const cryptoRandomId = (): string => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
 
 const normalizeSymbolKey = (value: string): string => value.replace(/[^a-z0-9]/gi, "").toLowerCase();
@@ -180,6 +195,24 @@ export const enqueueMt5Order = (order: Mt5QueuedOrder): Mt5QueuedOrder => {
 
   if (duplicate) {
     return duplicate;
+  }
+
+  // if a mapping JSON was provided explicitly, require an explicit mapping entry
+  const haveExplicitMap = Object.keys(mt5SymbolMapEnv).length > 0;
+  if (haveExplicitMap) {
+    const mapped = mt5SymbolMapEnv[order.symbol];
+    if (!mapped && mt5Prefix === "" && mt5Suffix === "") {
+      const rejected: Mt5QueuedOrder = {
+        ...order,
+        id: cryptoRandomId(),
+        status: "REJECTED",
+        note: `Rejected: MT5_SYMBOL_MAP_JSON provided but no mapping found for ${order.symbol}`,
+        createdAt: new Date().toISOString()
+      };
+      orders.push(rejected);
+      save(orders);
+      return rejected;
+    }
   }
 
   orders.push(order);
