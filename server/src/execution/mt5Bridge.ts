@@ -1,5 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { explainMt5Retcode } from "../notify/mt5Retcodes.js";
+import { sendAlert } from "../notify/alert.js";
 
 type Mt5OrderStatus = "PENDING" | "PROCESSING" | "FILLED" | "REJECTED";
 
@@ -217,6 +219,10 @@ export const enqueueMt5Order = (order: Mt5QueuedOrder): Mt5QueuedOrder => {
 
   orders.push(order);
   save(orders);
+  // notify if symbol mapping was adjusted/absent
+  if (order.note) {
+    void sendAlert({ title: "MT5 Order Queued (note)", text: `Order ${order.id} queued: ${order.note}`, meta: order });
+  }
   return order;
 };
 

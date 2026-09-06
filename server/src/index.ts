@@ -426,7 +426,10 @@ app.post("/api/mt5/orders/ack", (req, res) => {
 
   // send alert for rejected orders
   if (body.status === "REJECTED") {
-    void sendAlert({ title: "MT5 Order Rejected", text: `Order ${body.id} was rejected. Note: ${body.note ?? "(none)"}`, meta: updated });
+    // try to include retcode explanation if present in note
+    const retcodeMatch = String(body.note ?? "").match(/retcode\s*=?\s*(\d+)/i);
+    const explanation = retcodeMatch ? explainMt5Retcode(retcodeMatch[1], body.note) : body.note;
+    void sendAlert({ title: "MT5 Order Rejected", text: `Order ${body.id} was rejected. ${explanation ?? "(no note)"}`, meta: updated });
   }
 
   return res.json({ order: updated });
@@ -490,6 +493,7 @@ app.post("/api/analyze-live", async (req, res) => {
       pair: body.symbol,
       timeframe: body.timeframe,
       tradeMode: body.tradeMode,
+      strategy: body.strategy,
       candles,
       fundamentals: await getFundamentalContext(body.market, body.symbol),
       risk: body.risk,
@@ -549,7 +553,7 @@ app.post("/api/analyze", (req, res) => {
     return res.status(400).json({ error: riskValidation.message });
   }
 
-  const setup = analyzeSetup(body);
+  const setup = analyzeSetup({ ...body });
   const sizing = computePositionSizing({
     accountBalance: body.risk.accountBalance,
     riskPercent: body.risk.riskPercent,
@@ -703,6 +707,7 @@ io.on("connection", (socket) => {
       symbol: string;
       timeframe: Timeframe;
       tradeMode?: "scalp" | "day" | "swing" | "position";
+      strategy?: string;
       risk: { accountBalance: number; riskPercent: number };
       execution?: ExecutionPreferences;
     }) => {
@@ -734,6 +739,7 @@ io.on("connection", (socket) => {
             pair: payload.symbol,
             timeframe: payload.timeframe,
             tradeMode: payload.tradeMode,
+            strategy: payload.strategy,
             candles,
             fundamentals: await getFundamentalContext(payload.market, payload.symbol),
             risk: payload.risk,
