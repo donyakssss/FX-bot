@@ -170,6 +170,13 @@ const executeMt5 = async (payload: SignalPayload, prefs: Required<ExecutionPrefe
     const orderType: Mt5OrderType = payload.setup.direction === "BUY" ? "BUY_MARKET" : "SELL_MARKET";
     const hash = signalHash(payload, orderType, entryPrice);
     const orderId = crypto.randomUUID();
+    // enforce local safety bounds before enqueueing (mirror of mt5Bridge adjustments)
+    const minLot = Number(process.env.MT5_MIN_LOT ?? 0.01);
+    const maxLot = Number(process.env.MT5_MAX_LOT ?? 2);
+    const lotStep = Number(process.env.MT5_LOT_STEP ?? 0.01);
+    const roundToStep = (v: number, s: number) => (!Number.isFinite(v) || !Number.isFinite(s) || s <= 0 ? v : Math.max(0, Math.floor(v / s) * s));
+    const adjustedLot = Math.max(minLot, Math.min(maxLot, roundToStep(payload.risk.lotSize, lotStep)));
+
     const order: Mt5QueuedOrder = {
       id: orderId,
       signalHash: hash,
@@ -181,11 +188,18 @@ const executeMt5 = async (payload: SignalPayload, prefs: Required<ExecutionPrefe
       entry: entryPrice,
       stopLoss: payload.setup.stopLoss,
       takeProfit: payload.setup.takeProfit,
-      lotSize: Math.max(0.01, Number(payload.risk.lotSize.toFixed(2))),
+      lotSize: adjustedLot,
       trailing,
       createdAt: new Date().toISOString(),
       status: "PENDING"
     };
+    // annotate mapping/adjustment info for EA visibility
+    if (brokerSymbol !== payload.snapshot.symbol) {
+      order.note = `Mapped ${payload.snapshot.symbol} -> ${brokerSymbol}`;
+    }
+    if (order.lotSize !== payload.risk.lotSize) {
+      order.note = `${order.note ? order.note + ' | ' : ''}Adjusted lot ${payload.risk.lotSize} -> ${order.lotSize}`;
+    }
 
     if (prefs.dryRun) {
       return { executed: false, broker: "mt5", message: "Dry-run: simulated one-tap market order", details: order };
@@ -216,7 +230,13 @@ const executeMt5 = async (payload: SignalPayload, prefs: Required<ExecutionPrefe
     const orderType = plan.orderType as Mt5OrderType;
     const entryPrice = plan.entry;
     const orderId = crypto.randomUUID();
-    const allocationLot = Math.max(0.01, Number((payload.risk.lotSize * (plan.allocationPercent / 100)).toFixed(2)));
+    // apply same safety bounds for layered orders
+    const minLot = Number(process.env.MT5_MIN_LOT ?? 0.01);
+    const maxLot = Number(process.env.MT5_MAX_LOT ?? 2);
+    const lotStep = Number(process.env.MT5_LOT_STEP ?? 0.01);
+    const roundToStep = (v: number, s: number) => (!Number.isFinite(v) || !Number.isFinite(s) || s <= 0 ? v : Math.max(0, Math.floor(v / s) * s));
+    const rawAlloc = payload.risk.lotSize * (plan.allocationPercent / 100);
+    const allocationLot = Math.max(minLot, Math.min(maxLot, roundToStep(rawAlloc, lotStep)));
     const order: Mt5QueuedOrder = {
       id: orderId,
       signalHash: signalHash(payload, orderType, entryPrice),
@@ -233,6 +253,13 @@ const executeMt5 = async (payload: SignalPayload, prefs: Required<ExecutionPrefe
       createdAt: new Date().toISOString(),
       status: "PENDING"
     };
+
+    if (brokerSymbol !== payload.snapshot.symbol) {
+      order.note = `Mapped ${payload.snapshot.symbol} -> ${brokerSymbol}`;
+    }
+    if (allocationLot !== rawAlloc) {
+      order.note = `${order.note ? order.note + ' | ' : ''}Adjusted lot ${rawAlloc} -> ${allocationLot}`;
+    }
 
     if (prefs.dryRun) {
       simulated.push(order);
