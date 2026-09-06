@@ -97,6 +97,28 @@ const save = (orders: Mt5QueuedOrder[]): void => {
 export const enqueueMt5Order = (order: Mt5QueuedOrder): Mt5QueuedOrder => {
   const orders = load();
 
+  // normalize lot sizes to broker constraints to avoid MT5 rejections
+  const minLot = Number(process.env.MT5_MIN_LOT ?? 0.01);
+  // default to a conservative max lot to reduce accidental large live trades
+  const maxLot = Number(process.env.MT5_MAX_LOT ?? 2);
+  const lotStep = Number(process.env.MT5_LOT_STEP ?? 0.01);
+
+  const roundToStep = (value: number, step: number) => {
+    if (!Number.isFinite(value) || !Number.isFinite(step) || step <= 0) return value;
+    return Math.max(0, Math.floor(value / step) * step);
+  };
+
+  const adjustedLot = Math.max(minLot, Math.min(maxLot, roundToStep(order.lotSize, lotStep)));
+  if (adjustedLot !== order.lotSize) {
+    const note = `${order.note ?? ""}${order.note ? " | " : ""}Adjusted lot to ${adjustedLot} (min=${minLot},step=${lotStep},max=${maxLot})`;
+    order = { ...order, lotSize: adjustedLot, note };
+    try {
+      console.warn(`MT5 enqueue: adjusted lot for ${order.symbol} from ${order.lotSize} to ${adjustedLot}`);
+    } catch {
+      // ignore logging errors in constrained environments
+    }
+  }
+
   // enforce global concurrent trades cap if configured
   const maxConcurrentRaw = Number(process.env.MAX_CONCURRENT_TRADES ?? 0);
   if (Number.isFinite(maxConcurrentRaw) && maxConcurrentRaw > 0) {
