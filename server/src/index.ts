@@ -157,11 +157,12 @@ const validateLiveInstrument = (
 
 const resolveExecutionPreferences = (
   incoming?: ExecutionPreferences
-): Required<ExecutionPreferences> => ({
+): Required<ExecutionPreferences> & { dryRun: boolean } => ({
   oneTapEntry: incoming?.oneTapEntry ?? oneTapEntryDefault,
   enableTrailing: incoming?.enableTrailing ?? enableTrailingDefault,
   moveSlToBreakeven: incoming?.moveSlToBreakeven ?? moveSlToBreakevenDefault,
-  significantShiftOnly: incoming?.significantShiftOnly ?? significantShiftOnlyDefault
+  significantShiftOnly: incoming?.significantShiftOnly ?? significantShiftOnlyDefault,
+  dryRun: incoming?.dryRun ?? false
 });
 
 type BackgroundTarget = {
@@ -553,7 +554,7 @@ app.post("/api/analyze", (req, res) => {
   });
 });
 
-app.post("/api/annotations", (req, res) => {
+app.post("/api/annotations", async (req, res) => {
   const body = req.body as AnalyzeRequest;
   if (!body || !Array.isArray(body.candles) || body.candles.length < 20) {
     return res.status(400).json({ error: "Provide at least 20 candles for annotations." });
@@ -654,6 +655,8 @@ app.post("/api/annotations", (req, res) => {
     const want = String(req.query.format ?? "svg").toLowerCase();
     if (want === "png") {
       try {
+        // dynamic import may not have types available in some builds; ignore TS here
+        // @ts-ignore
         const sharp = await import("sharp");
         const buf = await sharp.default(Buffer.from(svg)).png().toBuffer();
         res.setHeader("Content-Type", "image/png");
