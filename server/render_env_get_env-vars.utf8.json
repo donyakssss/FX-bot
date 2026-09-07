@@ -1,0 +1,100 @@
+﻿[
+    {
+        "envVar":  {
+                       "key":  "MT5_ENTRY_MODE",
+                       "value":  "market"
+                   },
+        "cursor":  "Hc6uHJX8ul5ucThhZTAwYzczYXZwMGQw"
+    },
+    {
+        "envVar":  {
+                       "key":  "BACKGROUND_TRADE_MODE",
+                       "value":  "scalp"
+                   },
+        "cursor":  "Hc6uHJX8ul43NHNzNzI4YzczZmdvODQw"
+    },
+    {
+        "envVar":  {
+                       "key":  "BACKGROUND_TIMEFRAME",
+                       "value":  "M1"
+                   },
+        "cursor":  "Hc6uHJX8ul43NHNzNzI4YzczZmdvODNn"
+    },
+    {
+        "envVar":  {
+                       "key":  "BACKGROUND_MARKETS",
+                       "value":  "forex,crypto,indices,metals"
+                   },
+        "cursor":  "Hc6uHJX8ul43NHNzNzI4YzczZmdvODMw"
+    },
+    {
+        "envVar":  {
+                       "key":  "BACKGROUND_ALL_SYMBOLS",
+                       "value":  "true"
+                   },
+        "cursor":  "Hc6uHJX8ul43NHNzNzI4YzczZmdvODJn"
+    },
+    {
+        "envVar":  {
+                       "key":  "BACKGROUND_AUTOTRADE_ENABLED",
+                       "value":  "true"
+                   },
+        "cursor":  "Hc6uHJX8ul43NHNzNzI4YzczZmdvODIw"
+    },
+    {
+        "envVar":  {
+                       "key":  "AUTO_EXECUTION_MIN_QUALITY",
+                       "value":  "HIGH"
+                   },
+        "cursor":  "2U3Ih-kO_qNmZG1ybm9sczczZGFhdm0w"
+    },
+    {
+        "envVar":  {
+                       "key":  "MT5_SHARED_SECRET",
+                       "value":  "2aHV4uomWzl/F9F2KGygTIBXRqGGA/LVeE6NWmfsDOE="
+                   },
+        "cursor":  "3Zpez68TQt5oazNlbzV1czczZHZzcmww"
+    },
+    {
+        "envVar":  {
+                       "key":  "MT5_SYMBOL_MAP_JSON",
+                       "value":  "{}"
+                   },
+        "cursor":  "3Zpez68TQt5oazNlbzV1czczZHZzcmtn"
+    },
+    {
+        "envVar":  {
+                       "key":  "MT5_SYMBOL_SUFFIX",
+                       "value":  ""
+                   },
+        "cursor":  "3Zpez68TQt5oazNlbzV1czczZHZzcmsw"
+    },
+    {
+        "envVar":  {
+                       "key":  "MT5_SYMBOL_PREFIX",
+                       "value":  ""
+                   },
+        "cursor":  "3Zpez68TQt5oazNlbzV1czczZHZzcmpn"
+    },
+    {
+        "envVar":  {
+                       "key":  "BROKER",
+                       "value":  "mt5"
+                   },
+        "cursor":  "3Zpez68TQt5oazNlbzV1czczZHZzcmow"
+    },
+    {
+        "envVar":  {
+                       "key":  "ENABLE_AUTO_EXECUTION",
+                       "value":  "true"
+                   },
+        "cursor":  "3Zpez68TQt5oazNlbzV1czczZHZzcmln"
+    },
+    {
+        "envVar":  {
+                       "key":  "NODE_VERSION",
+                       "value":  "20"
+                   },
+        "cursor":  "3Zpez68TQt5oazNlbzV1czczZHZzcmkw"
+    }
+]

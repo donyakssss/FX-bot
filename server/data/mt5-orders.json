@@ -1,1 +1,46 @@
-[]
+[
+  {
+    "id": "6629526d-8c5a-49ad-b518-65cc682f33d6",
+    "signalHash": "18252e2317938861c5527050c00a47348cd7d3046038e397636455c209b5c99a",
+    "symbol": "EURUSD",
+    "brokerSymbol": "EURUSD",
+    "tradeMode": "day",
+    "direction": "BUY",
+    "orderType": "BUY_MARKET",
+    "entry": 1.1621150970458984,
+    "stopLoss": 1.16131,
+    "takeProfit": 1.16303,
+    "lotSize": 2,
+    "trailing": {
+      "breakEvenR": 1.15,
+      "trailStartR": 1.8,
+      "trailStepR": 1
+    },
+    "createdAt": "2026-09-06T14:43:17.339Z",
+    "status": "FILLED",
+    "note": "Simulated fill from local EA",
+    "ticket": "123456"
+  },
+  {
+    "id": "manual-1788719884987",
+    "signalHash": "manual-1788719884987-sig",
+    "symbol": "GBPUSD",
+    "brokerSymbol": "GBPUSD",
+    "tradeMode": "day",
+    "direction": "BUY",
+    "orderType": "BUY_MARKET",
+    "entry": 1.27,
+    "stopLoss": 1.26,
+    "takeProfit": 1.28,
+    "lotSize": 0.05,
+    "trailing": {
+      "breakEvenR": 1.15,
+      "trailStartR": 1.8,
+      "trailStepR": 1
+    },
+    "createdAt": "2026-09-06T18:38:04.986Z",
+    "status": "REJECTED",
+    "ticket": "0",
+    "note": "retcode=10011; common error"
+  }
+]
